@@ -57,21 +57,105 @@
                 </div>
             </div>
 
-            <!-- Hidden file input for file picker -->
-            <input ref="fileInput" type="file" class="hidden" @change="handleFileInputChange" />
+            <!-- Hidden file input for file picker (with explicit id for robust trigger) -->
+            <input id="sqlite-file-input" ref="fileInput" type="file" class="hidden" @change="handleFileInputChange" />
 
-            <!-- Active File Selector / Dropdown -->
+            <!-- Active File Custom Popover / CRUD Selector -->
             <div v-if="sqliteFiles.length > 0" class="relative">
-                <label class="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-1">Active File</label>
-                <div class="flex items-center gap-1">
-                    <select v-model="selectedFileId" @change="onFileSelected" class="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs rounded-lg px-2.5 py-1.5 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500 truncate">
-                        <option v-for="f in sqliteFiles" :key="f.id" :value="f.id">
-                            {% raw %}{{ f.original_name }} ({{ formatFileSize(f.file_size) }}){% endraw %}
-                        </option>
-                    </select>
-                    <button v-if="activeFile" @click="confirmDeleteFile(activeFile)" class="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors shrink-0" title="Remove File">
-                        <i class="ph-bold ph-trash"></i>
+                <div class="flex items-center justify-between mb-1.5">
+                    <label class="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Active Database</label>
+                    <span class="text-[10px] text-slate-400 font-semibold">{% raw %}{{ sqliteFiles.length }}{% endraw %} files</span>
+                </div>
+
+                <!-- Custom Trigger Button -->
+                <div class="relative">
+                    <button type="button"
+                            @click="showFileDropdown = !showFileDropdown"
+                            class="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-xl text-xs flex items-center justify-between gap-2 shadow-xs hover:border-amber-400 dark:hover:border-amber-500 transition-all focus:outline-none focus:ring-2 focus:ring-amber-500/20">
+                        <div class="flex items-center gap-2 min-w-0 flex-1 text-left">
+                            <div class="w-6 h-6 rounded-lg bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0">
+                                <i class="ph-bold ph-database text-xs"></i>
+                            </div>
+                            <div class="min-w-0 flex-1">
+                                <div class="font-bold truncate text-slate-800 dark:text-slate-200">
+                                    {% raw %}{{ activeFile ? activeFile.original_name : 'Select file...' }}{% endraw %}
+                                </div>
+                                <div v-if="activeFile" class="text-[10px] text-slate-400 leading-tight">
+                                    {% raw %}{{ formatFileSize(activeFile.file_size) }}{% endraw %}
+                                </div>
+                            </div>
+                        </div>
+                        <i class="ph-bold ph-caret-down text-slate-400 text-xs transition-transform duration-200 shrink-0"
+                           :class="{ 'rotate-180': showFileDropdown }"></i>
                     </button>
+
+                    <!-- Click outside backdrop -->
+                    <div v-if="showFileDropdown" class="fixed inset-0 z-40" @click="showFileDropdown = false"></div>
+
+                    <!-- Popover Menu List -->
+                    <div v-if="showFileDropdown"
+                         class="absolute left-0 right-0 top-full mt-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl z-50 p-1.5 flex flex-col gap-1 overflow-hidden animate-in fade-in zoom-in-95 duration-150 max-h-72 overflow-y-auto">
+                        
+                        <div class="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                            Loaded Databases
+                        </div>
+
+                        <!-- Database File Items -->
+                        <div v-for="f in sqliteFiles" :key="f.id"
+                             @click="switchActiveFile(f)"
+                             class="group/item flex items-center justify-between p-2 rounded-xl transition-all cursor-pointer border"
+                             :class="f.id === selectedFileId ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800/80 text-amber-900 dark:text-amber-200' : 'border-transparent text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50'">
+                            
+                            <div class="flex items-center gap-2.5 min-w-0 flex-1">
+                                <div class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+                                     :class="f.id === selectedFileId ? 'bg-amber-500 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 group-hover/item:text-amber-500'">
+                                    <i class="ph-bold ph-database text-xs"></i>
+                                </div>
+                                <div class="min-w-0 flex-1">
+                                    <div class="font-bold text-xs truncate" :class="f.id === selectedFileId ? 'text-amber-950 dark:text-amber-100' : 'text-slate-800 dark:text-slate-200'">
+                                        {% raw %}{{ f.original_name }}{% endraw %}
+                                    </div>
+                                    <div class="text-[10px] text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+                                        <span>{% raw %}{{ formatFileSize(f.file_size) }}{% endraw %}</span>
+                                        <span v-if="f.id === selectedFileId" class="text-amber-600 dark:text-amber-400 font-bold uppercase tracking-wider text-[9px]">• Active</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Actions on hover or active -->
+                            <div class="flex items-center gap-1 shrink-0 ml-1">
+                                <a :href="'/api/sqlite/' + f.id + '/download'"
+                                   @click.stop
+                                   title="Download File"
+                                   class="p-1 rounded-md text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+                                    <i class="ph-bold ph-download-simple text-xs"></i>
+                                </a>
+                                <button type="button"
+                                        @click.stop="confirmDeleteFile(f)"
+                                        title="Delete File"
+                                        class="p-1 rounded-md text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors">
+                                    <i class="ph-bold ph-trash text-xs"></i>
+                                </button>
+                                <i v-if="f.id === selectedFileId" class="ph-bold ph-check text-amber-600 dark:text-amber-400 text-sm ml-1"></i>
+                            </div>
+                        </div>
+
+                        <!-- Dropdown Footer Actions -->
+                        <div class="pt-1.5 mt-1 border-t border-slate-100 dark:border-slate-700/60 flex flex-col gap-1">
+                            <button type="button"
+                                    @click="showFileDropdown = false; triggerFileUpload()"
+                                    class="w-full py-1.5 px-2.5 rounded-lg text-left text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-amber-50 dark:hover:bg-amber-950/40 hover:text-amber-600 dark:hover:text-amber-400 flex items-center gap-2 transition-colors">
+                                <i class="ph-bold ph-upload-simple text-amber-500"></i>
+                                <span>Upload another SQLite file</span>
+                            </button>
+                            <button type="button"
+                                    @click="showFileDropdown = false; showLocalPathModal = true"
+                                    class="w-full py-1.5 px-2.5 rounded-lg text-left text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-amber-50 dark:hover:bg-amber-950/40 hover:text-amber-600 dark:hover:text-amber-400 flex items-center gap-2 transition-colors">
+                                <i class="ph-bold ph-folder-open text-amber-500"></i>
+                                <span>Open server local path</span>
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -508,6 +592,8 @@
             return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
         };
 
+        const showFileDropdown = ref(false);
+
         // Fetch uploaded files list
         const fetchFiles = async () => {
             try {
@@ -528,6 +614,21 @@
             }
         };
 
+        // Switch active SQLite file
+        const switchActiveFile = async (file) => {
+            if (!file) return;
+            showFileDropdown.value = false;
+            selectedFileId.value = file.id;
+            localStorage.setItem('last_sqlite_file_id', file.id);
+            activeTable.value = '';
+            rows.value = [];
+            totalRows.value = 0;
+            currentPage.value = 1;
+            searchQuery.value = '';
+            expandedSchema.value = null;
+            await fetchSchema(file.id);
+        };
+
         // Fetch database schema
         const fetchSchema = async (fileId) => {
             if (!fileId) return;
@@ -540,11 +641,15 @@
                     tables.value = data.tables || [];
                     views.value = data.views || [];
                     schema.value = data.schema || {};
-                    // Auto select first table if none active
-                    if (!activeTable.value && data.tables && data.tables.length > 0) {
+                    // Auto select first table if none active or current activeTable is not in this db
+                    const allDbObjects = [...(data.tables || []), ...(data.views || [])];
+                    if ((!activeTable.value || !allDbObjects.includes(activeTable.value)) && data.tables && data.tables.length > 0) {
                         selectSqliteTable(data.tables[0]);
-                    } else if (activeTable.value && data.tables && data.tables.includes(activeTable.value)) {
+                    } else if (activeTable.value && allDbObjects.includes(activeTable.value)) {
                         fetchTableData();
+                    } else {
+                        activeTable.value = '';
+                        rows.value = [];
                     }
                 } else {
                     schemaError.value = data.error || 'Failed to read database schema';
@@ -560,6 +665,9 @@
             localStorage.setItem('last_sqlite_file_id', selectedFileId.value);
             activeTable.value = '';
             rows.value = [];
+            totalRows.value = 0;
+            currentPage.value = 1;
+            expandedSchema.value = null;
             fetchSchema(selectedFileId.value);
         };
 
@@ -636,11 +744,12 @@
         const isDragging = ref(false);
         const fileInput = ref(null);
         const triggerFileUpload = () => {
-            if (fileInput.value) fileInput.value.click();
+            const input = document.getElementById('sqlite-file-input') || fileInput.value;
+            if (input) input.click();
         };
 
         const handleFileInputChange = (e) => {
-            const file = e.target.files[0];
+            const file = e.target.files && e.target.files[0];
             if (file) uploadSqliteFile(file);
             e.target.value = '';
         };
@@ -649,7 +758,7 @@
         const onDragLeave = () => { isDragging.value = false; };
         const onDrop = (e) => {
             isDragging.value = false;
-            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
                 uploadSqliteFile(e.dataTransfer.files[0]);
             }
         };
@@ -668,10 +777,8 @@
                 console.log("Upload response:", data);
                 if (data.success) {
                     baseSetup.showToast('File loaded successfully!');
-                    selectedFileId.value = data.file.id;
-                    localStorage.setItem('last_sqlite_file_id', data.file.id);
                     await fetchFiles();
-                    await fetchSchema(data.file.id);
+                    await switchActiveFile(data.file);
                 } else {
                     baseSetup.showToast(data.error || 'Upload failed', 'error');
                 }
@@ -694,37 +801,53 @@
                 });
                 const data = await res.json();
                 if (data.success) {
-                    showToast('Local SQLite file opened!');
+                    baseSetup.showToast('Local SQLite file opened!');
                     showLocalPathModal.value = false;
-                    selectedFileId.value = data.file.id;
-                    localStorage.setItem('last_sqlite_file_id', data.file.id);
+                    const openedFile = data.file;
                     localPathInput.value = '';
                     await fetchFiles();
+                    await switchActiveFile(openedFile);
                 } else {
-                    showToast(data.error || 'Failed to open local path', 'error');
+                    baseSetup.showToast(data.error || 'Failed to open local path', 'error');
                 }
             } catch (e) {
-                showToast('Error registering local file', 'error');
+                baseSetup.showToast('Error registering local file', 'error');
             }
         };
 
         // Delete file
         const confirmDeleteFile = async (file) => {
-            if (!confirm(`Are you sure you want to remove "${file.original_name}"?`)) return;
+            if (!file) return;
+            const confirmed = await baseSetup.customConfirm(
+                'Remove SQLite File',
+                `Are you sure you want to remove "${file.original_name}" from the viewer?`,
+                true
+            );
+            if (!confirmed) return;
+
             try {
                 const res = await fetch(`/api/sqlite/files/${file.id}`, { method: 'DELETE' });
                 const data = await res.json();
                 if (data.success) {
-                    showToast('File removed');
-                    selectedFileId.value = '';
-                    activeTable.value = '';
-                    rows.value = [];
+                    baseSetup.showToast('File removed');
+                    if (selectedFileId.value === file.id) {
+                        selectedFileId.value = '';
+                        localStorage.removeItem('last_sqlite_file_id');
+                        activeTable.value = '';
+                        rows.value = [];
+                        tables.value = [];
+                        views.value = [];
+                        schema.value = {};
+                    }
                     await fetchFiles();
+                    if (!selectedFileId.value && sqliteFiles.value.length > 0) {
+                        await switchActiveFile(sqliteFiles.value[0]);
+                    }
                 } else {
-                    showToast(data.error || 'Failed to remove file', 'error');
+                    baseSetup.showToast(data.error || 'Failed to remove file', 'error');
                 }
             } catch (e) {
-                showToast('Network error removing file', 'error');
+                baseSetup.showToast('Network error removing file', 'error');
             }
         };
 
@@ -830,6 +953,7 @@
             selectSqliteTable, fetchTableData, sortBy, prevPage, nextPage,
             refreshCurrentDatabase,
             isDragging, fileInput, triggerFileUpload, handleFileInputChange, onDragOver, onDragLeave, onDrop,
+            showFileDropdown, switchActiveFile,
             showLocalPathModal, localPathInput, registerLocalPath, confirmDeleteFile,
             openSqlConsole,
             showRowModal, isEditingRow, rowFormData, openInsertModal, openEditModal, saveRowForm, confirmDeleteRow
