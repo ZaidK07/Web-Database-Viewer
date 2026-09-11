@@ -5,6 +5,7 @@ import io
 import ipaddress
 import json
 import os
+import sqlite3
 import subprocess
 import tempfile
 import uuid
@@ -28,6 +29,7 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app)
 PROFILES_FILE = os.path.join(app.root_path, 'profiles.json')
+PROFILES_DB_FILE = os.path.join(app.root_path, 'profiles.db')
 
 
 class DatabaseJSONProvider(DefaultJSONProvider):
@@ -53,58 +55,128 @@ class DatabaseJSONProvider(DefaultJSONProvider):
 app.json = DatabaseJSONProvider(app)
 
 
-def _normalize_profiles(data):
-    changed = False
-    for profile in data.get('profiles', []):
-        if 'engine' not in profile:
-            profile['engine'] = 'mysql'
-            changed = True
-        if 'schema' not in profile:
-            profile['schema'] = 'public'
-            changed = True
-    return changed
+def get_sqlite_conn():
+    conn = sqlite3.connect(PROFILES_DB_FILE)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def init_profiles_db():
+    with get_sqlite_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS meta (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS profiles (
+                name TEXT PRIMARY KEY,
+                engine TEXT NOT NULL DEFAULT 'mysql',
+                host TEXT NOT NULL DEFAULT 'localhost',
+                port INTEGER NOT NULL DEFAULT 3306,
+                user TEXT NOT NULL DEFAULT 'root',
+                password TEXT NOT NULL DEFAULT '',
+                schema TEXT NOT NULL DEFAULT 'public',
+                sslmode TEXT DEFAULT '',
+                databases_json TEXT NOT NULL DEFAULT '[]'
+            )
+        ''')
+        
+        # Check if profiles table is empty. If empty and profiles.json exists, migrate everything!
+        cursor.execute('SELECT COUNT(*) AS cnt FROM profiles')
+        count = cursor.fetchone()['cnt']
+        if count == 0:
+            active_name = ''
+            json_profiles = []
+            if os.path.exists(PROFILES_FILE):
+                try:
+                    with open(PROFILES_FILE, encoding='utf-8') as handle:
+                        mig_data = json.load(handle)
+                        active_name = mig_data.get('active', '')
+                        json_profiles = mig_data.get('profiles', [])
+                except Exception as e:
+                    print(f"Error reading profiles.json for migration: {e}")
+
+            if not json_profiles:
+                # Default fallback if no profiles.json
+                default_dbs = []
+                legacy_file = os.path.join(app.root_path, 'db_list.json')
+                if os.path.exists(legacy_file):
+                    try:
+                        with open(legacy_file, encoding='utf-8') as handle:
+                            default_dbs = json.load(handle)
+                    except (OSError, ValueError):
+                        pass
+                active_name = 'default'
+                json_profiles = [{
+                    'name': 'default', 'engine': 'mysql',
+                    'host': os.getenv('DB_HOST', 'localhost'),
+                    'port': int(os.getenv('DB_PORT', 3306) or 3306),
+                    'user': os.getenv('DB_USER', 'root'),
+                    'password': os.getenv('DB_PASSWORD', ''),
+                    'schema': 'public', 'databases': default_dbs,
+                }]
+
+            for p in json_profiles:
+                cursor.execute('''
+                    INSERT OR REPLACE INTO profiles (name, engine, host, port, user, password, schema, sslmode, databases_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    p.get('name'),
+                    p.get('engine', 'mysql'),
+                    p.get('host', 'localhost'),
+                    int(p.get('port') or (5432 if p.get('engine') == 'postgresql' else 3306)),
+                    p.get('user', 'root'),
+                    p.get('password', ''),
+                    p.get('schema', 'public'),
+                    p.get('sslmode', ''),
+                    json.dumps(p.get('databases', []))
+                ))
+
+            if not active_name and json_profiles:
+                active_name = json_profiles[0].get('name', '')
+
+            if active_name:
+                cursor.execute('INSERT OR REPLACE INTO meta (key, value) VALUES ("active", ?)', (active_name,))
+        conn.commit()
+
+
+# Initialize database and migrate data on module load
+init_profiles_db()
+
+
+def _row_to_profile(row):
+    if row is None:
+        return None
+    d = dict(row)
+    try:
+        d['databases'] = json.loads(d.get('databases_json') or '[]')
+    except (json.JSONDecodeError, TypeError):
+        d['databases'] = []
+    d.pop('databases_json', None)
+    return d
 
 
 def get_profiles_data():
-    if not os.path.exists(PROFILES_FILE):
-        default_dbs = []
-        legacy_file = os.path.join(app.root_path, 'db_list.json')
-        if os.path.exists(legacy_file):
-            try:
-                with open(legacy_file, encoding='utf-8') as handle:
-                    default_dbs = json.load(handle)
-            except (OSError, ValueError):
-                pass
-        data = {'active': 'default', 'profiles': [{
-            'name': 'default', 'engine': 'mysql',
-            'host': os.getenv('DB_HOST', 'localhost'),
-            'port': int(os.getenv('DB_PORT', 3306) or 3306),
-            'user': os.getenv('DB_USER', 'root'),
-            'password': os.getenv('DB_PASSWORD', ''),
-            'schema': 'public', 'databases': default_dbs,
-        }]}
-        save_profiles_data(data)
-        return data
-    try:
-        with open(PROFILES_FILE, encoding='utf-8') as handle:
-            data = json.load(handle)
-    except (OSError, ValueError):
-        return {'active': '', 'profiles': []}
-    if _normalize_profiles(data):
-        save_profiles_data(data)
-    return data
-
-
-def save_profiles_data(data):
-    with open(PROFILES_FILE, 'w', encoding='utf-8') as handle:
-        json.dump(data, handle, indent=4)
+    with get_sqlite_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute('SELECT value FROM meta WHERE key = "active"')
+        active_row = cursor.fetchone()
+        active = active_row['value'] if active_row else ''
+        
+        cursor.execute('SELECT * FROM profiles ORDER BY name ASC')
+        profiles = [_row_to_profile(row) for row in cursor.fetchall()]
+        return {'active': active, 'profiles': profiles}
 
 
 def get_profile(profile_name):
-    for profile in get_profiles_data().get('profiles', []):
-        if profile['name'] == profile_name:
-            return profile
-    return None
+    with get_sqlite_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM profiles WHERE name = ?', (profile_name,))
+        row = cursor.fetchone()
+        return _row_to_profile(row)
 
 
 def require_profile(profile_name):
@@ -119,13 +191,13 @@ def get_db_list(profile_name):
 
 
 def save_db_list(profile_name, databases):
-    data = get_profiles_data()
-    for profile in data['profiles']:
-        if profile['name'] == profile_name:
-            profile['databases'] = databases
-            save_profiles_data(data)
-            return
-    raise LookupError(f'Profile "{profile_name}" was not found')
+    with get_sqlite_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute('UPDATE profiles SET databases_json = ? WHERE name = ?',
+                       (json.dumps(databases), profile_name))
+        if cursor.rowcount == 0:
+            raise LookupError(f'Profile "{profile_name}" was not found')
+        conn.commit()
 
 
 class MySQLAdapter:
@@ -404,6 +476,18 @@ def list_profiles():
     return jsonify(success=True, active=data.get('active'), profiles=public_profiles)
 
 
+@app.route('/api/profiles/active', methods=['PUT'])
+def switch_active_profile():
+    req = request.get_json(silent=True) or {}
+    name = (req.get('name') or '').strip()
+    if not get_profile(name):
+        return api_error('Profile not found', 404)
+    with get_sqlite_conn() as conn:
+        conn.cursor().execute('INSERT OR REPLACE INTO meta (key, value) VALUES ("active", ?)', (name,))
+        conn.commit()
+    return jsonify(success=True, active=name)
+
+
 @app.route('/api/profiles', methods=['POST'])
 def add_profile():
     req = request.get_json(silent=True) or {}
@@ -415,63 +499,106 @@ def add_profile():
         return api_error('Profile names cannot contain slashes', 400)
     if engine not in ('mysql', 'postgresql'):
         return api_error('Database type must be MySQL or PostgreSQL', 400)
-    data = get_profiles_data()
-    if any(p['name'] == name for p in data['profiles']):
+    
+    if get_profile(name):
         return api_error('Profile already exists', 400)
+
     default_port = 5432 if engine == 'postgresql' else 3306
     default_user = 'postgres' if engine == 'postgresql' else 'root'
-    data['profiles'].append({
-        'name': name, 'engine': engine, 'host': req.get('host') or 'localhost',
-        'port': int(req.get('port') or default_port), 'user': req.get('user') or default_user,
-        'password': req.get('password') or '', 'schema': req.get('schema') or 'public',
-        'sslmode': req.get('sslmode') or '', 'databases': [],
-    })
-    if len(data['profiles']) == 1:
-        data['active'] = name
-    save_profiles_data(data)
+    
+    with get_sqlite_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO profiles (name, engine, host, port, user, password, schema, sslmode, databases_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            name,
+            engine,
+            req.get('host') or 'localhost',
+            int(req.get('port') or default_port),
+            req.get('user') or default_user,
+            req.get('password') or '',
+            req.get('schema') or 'public',
+            req.get('sslmode') or '',
+            '[]'
+        ))
+        
+        cursor.execute('SELECT COUNT(*) AS cnt FROM profiles')
+        if cursor.fetchone()['cnt'] == 1:
+            cursor.execute('INSERT OR REPLACE INTO meta (key, value) VALUES ("active", ?)', (name,))
+        conn.commit()
+
     return jsonify(success=True, name=name)
 
 
 @app.route('/api/profiles/<name>', methods=['PUT'])
 def update_profile(name):
     req = request.get_json(silent=True) or {}
-    data = get_profiles_data()
-    index = next((i for i, p in enumerate(data['profiles']) if p['name'] == name), -1)
-    if index < 0:
+    old = get_profile(name)
+    if not old:
         return api_error('Profile not found', 404)
-    old = data['profiles'][index]
+    
     new_name = (req.get('name') or name).strip()
     if '/' in new_name:
         return api_error('Profile names cannot contain slashes', 400)
-    if new_name != name and any(p['name'] == new_name for p in data['profiles']):
+    if new_name != name and get_profile(new_name):
         return api_error('A profile with this name already exists', 400)
+    
     engine = (req.get('engine') or old.get('engine') or 'mysql').lower()
     if engine not in ('mysql', 'postgresql'):
         return api_error('Database type must be MySQL or PostgreSQL', 400)
-    updated = dict(old)
-    updated.update({
-        'name': new_name, 'engine': engine, 'host': req.get('host') or old['host'],
-        'port': int(req.get('port') or old['port']), 'user': req.get('user') or old['user'],
-        'schema': req.get('schema') or old.get('schema') or 'public',
-    })
-    if req.get('password'):
-        updated['password'] = req['password']
-    data['profiles'][index] = updated
-    if data.get('active') == name:
-        data['active'] = new_name
-    save_profiles_data(data)
+
+    host = req.get('host') or old['host']
+    port = int(req.get('port') or old['port'])
+    user = req.get('user') or old['user']
+    schema = req.get('schema') or old.get('schema') or 'public'
+    password = req['password'] if req.get('password') else old['password']
+    sslmode = req.get('sslmode') or old.get('sslmode') or ''
+    databases_json = json.dumps(old.get('databases', []))
+
+    with get_sqlite_conn() as conn:
+        cursor = conn.cursor()
+        if new_name != name:
+            cursor.execute('DELETE FROM profiles WHERE name = ?', (name,))
+            cursor.execute('''
+                INSERT INTO profiles (name, engine, host, port, user, password, schema, sslmode, databases_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (new_name, engine, host, port, user, password, schema, sslmode, databases_json))
+            
+            # Update active profile if needed
+            cursor.execute('SELECT value FROM meta WHERE key = "active"')
+            active_row = cursor.fetchone()
+            if active_row and active_row['value'] == name:
+                cursor.execute('UPDATE meta SET value = ? WHERE key = "active"', (new_name,))
+        else:
+            cursor.execute('''
+                UPDATE profiles
+                SET engine = ?, host = ?, port = ?, user = ?, password = ?, schema = ?, sslmode = ?
+                WHERE name = ?
+            ''', (engine, host, port, user, password, schema, sslmode, name))
+        conn.commit()
+
     return jsonify(success=True, name=new_name)
 
 
 @app.route('/api/profiles/<name>', methods=['DELETE'])
 def delete_profile(name):
-    data = get_profiles_data()
-    if not any(p['name'] == name for p in data['profiles']):
+    if not get_profile(name):
         return api_error('Profile not found', 404)
-    data['profiles'] = [p for p in data['profiles'] if p['name'] != name]
-    if data.get('active') == name:
-        data['active'] = data['profiles'][0]['name'] if data['profiles'] else ''
-    save_profiles_data(data)
+    
+    with get_sqlite_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM profiles WHERE name = ?', (name,))
+        
+        cursor.execute('SELECT value FROM meta WHERE key = "active"')
+        active_row = cursor.fetchone()
+        if active_row and active_row['value'] == name:
+            cursor.execute('SELECT name FROM profiles ORDER BY name ASC LIMIT 1')
+            first_p = cursor.fetchone()
+            new_active = first_p['name'] if first_p else ''
+            cursor.execute('UPDATE meta SET value = ? WHERE key = "active"', (new_active,))
+        conn.commit()
+
     return jsonify(success=True)
 
 
