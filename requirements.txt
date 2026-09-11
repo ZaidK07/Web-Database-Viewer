@@ -1,0 +1,6 @@
+flask
+flask-restful
+flask-cors
+PyMySQL
+psycopg[binary]
+python-dotenv

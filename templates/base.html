@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Database Viewer</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <script>
+        // Immediate theme initialization to prevent flash
+        if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { sans: ["Outfit", "sans-serif"] },
+                    colors: {
+                        brand: { 50: "#f0f9ff", 100: "#e0f2fe", 500: "#0ea5e9", 600: "#0284c7", 900: "#0c4a6e" },
+                        accent: { 50: "#fdf4ff", 500: "#d946ef" },
+                    }
+                }
+            }
+        };
+    </script>
+    <style>
+        [v-cloak] { display: none !important; }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        .dark .glass-panel {
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        .dark ::-webkit-scrollbar-thumb { background: #334155; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .dark ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    </style>
+    {% block head %}{% endblock %}
+</head>
+<body class="bg-slate-50 text-slate-800 dark:bg-slate-950 dark:text-slate-100 h-screen overflow-hidden flex flex-col font-sans transition-colors duration-300">
+    <div id="app" v-cloak class="h-full flex flex-col">
+        <!-- Header -->
+        <header class="h-16 px-6 flex items-center justify-between glass-panel z-20 shadow-sm shrink-0">
+            <div class="flex items-center gap-3 min-w-0">
+                <a href="/" class="flex items-center gap-2 text-brand-900 dark:text-white cursor-pointer shrink-0" title="All profiles">
+                    <i class="ph-duotone ph-database text-2xl text-brand-500"></i>
+                    <h1 class="text-xl font-medium tracking-tight hidden xl:block">Web Database Viewer</h1>
+                </a>
+
+                {% if profile_name %}
+                <nav class="flex items-center gap-1.5 min-w-0 text-sm" aria-label="Breadcrumb">
+                    <i class="ph-bold ph-caret-right text-[10px] text-slate-300 dark:text-slate-600 shrink-0"></i>
+                    <a href="{{ url_for('index', profile_name=profile_name) }}" class="px-2 py-1 rounded-md text-slate-500 dark:text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-slate-100 dark:hover:bg-slate-800 truncate max-w-40 transition-colors" title="{{ profile_name }}">{{ profile_name }}</a>
+                    {% if dbname is defined %}
+                    <i class="ph-bold ph-caret-right text-[10px] text-slate-300 dark:text-slate-600 shrink-0"></i>
+                    <a href="{{ url_for('database_view', profile_name=profile_name, dbname=dbname) }}" class="px-2 py-1 rounded-md text-slate-500 dark:text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-slate-100 dark:hover:bg-slate-800 truncate max-w-40 transition-colors" title="{{ dbname }}">{{ dbname }}</a>
+                    <template v-if="currentTable">
+                        <i class="ph-bold ph-caret-right text-[10px] text-slate-300 dark:text-slate-600 shrink-0"></i>
+                        <span class="px-2 py-1 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 truncate max-w-40" :title="currentTable">{% raw %}{{ currentTable }}{% endraw %}</span>
+                    </template>
+                    {% endif %}
+                </nav>
+                {% endif %}
+            </div>
+            
+            <div class="flex items-center gap-2">
+                <!-- Custom Profile Selector - Enabled Everywhere -->
+                <div v-if="profiles.length > 0" class="relative">
+                    <button @click="showProfileDropdown = !showProfileDropdown" class="flex items-center gap-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-slate-200 rounded-lg px-3 py-1.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-sm min-w-[180px] justify-between">
+                        <div class="flex items-center gap-2 truncate">
+                            <i class="ph-bold ph-hard-drives text-brand-500"></i>
+                            <span class="truncate font-medium">{% raw %}{{ activeProfile || 'Select profile' }}{% endraw %}</span>
+                        </div>
+                        <i class="ph-bold ph-caret-down text-xs text-slate-400 transition-transform" :class="{'rotate-180': showProfileDropdown}"></i>
+                    </button>
+                    
+                    <div v-if="showProfileDropdown" class="absolute top-full right-0 mt-2 w-64 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                        <div class="p-2 max-h-64 overflow-y-auto">
+                            <div v-for="p in profiles" :key="p.name" @click="handleProfileSwitch(p.name)" class="group flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors" :class="activeProfile === p.name ? 'bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-400' : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400'">
+                                <div class="flex items-center gap-2 min-w-0">
+                                    <i class="ph-duotone ph-hard-drive text-lg" :class="activeProfile === p.name ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400'"></i>
+                                    <div class="flex flex-col min-w-0">
+                                        <span class="text-sm font-semibold truncate">{% raw %}{{ p.name }}{% endraw %}</span>
+                                        <span class="text-[10px] opacity-60 truncate">{% raw %}{{ p.engine === 'postgresql' ? 'PostgreSQL' : 'MySQL' }} · {{ p.user }}@{{ p.host }}{% endraw %}</span>
+                                    </div>
+                                </div>
+                                <i v-if="activeProfile === p.name" class="ph-bold ph-check text-brand-600 dark:text-brand-400 shrink-0"></i>
+                            </div>
+                        </div>
+                        <div class="p-2 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50">
+                            <button @click="showProfileModal = true; showProfileDropdown = false" class="w-full flex items-center gap-2 p-2 rounded-lg text-xs font-bold text-slate-500 hover:text-brand-600 hover:bg-white dark:hover:bg-slate-800 transition-all uppercase tracking-widest">
+                                <i class="ph-bold ph-gear"></i> Manage Profiles
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <button @click="showProfileModal = true" class="w-8 h-8 rounded-full flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-600 dark:text-slate-400" title="Manage Profiles">
+                    <i class="ph-bold ph-gear"></i>
+                </button>
+            </div>
+
+            <div class="flex items-center gap-4">
+                <button @click="showFeaturesModal = true" class="w-10 h-10 rounded-full flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-600 dark:text-slate-400" title="App Features & Shortcuts">
+                    <i class="ph-bold ph-info text-xl"></i>
+                </button>
+                <button @click="toggleDarkMode" class="w-10 h-10 rounded-full flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-600 dark:text-slate-400">
+                    <i class="ph-bold" :class="isDark ? 'ph-sun' : 'ph-moon'"></i>
+                </button>
+                <button @click="showSqlPanel = !showSqlPanel" class="px-4 py-2 rounded-full bg-slate-800 dark:bg-slate-100 dark:text-slate-900 text-white text-sm font-medium hover:bg-slate-900 dark:hover:bg-white transition-colors shadow-md flex items-center gap-2">
+                    <i class="ph ph-terminal"></i> Raw SQL
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="flex-1 overflow-auto relative flex">
+            <!-- Content Area -->
+            <div class="flex-1 overflow-auto">
+                {% block content %}{% endblock %}
+            </div>
+
+            <!-- Right Sidebar for Raw SQL -->
+            <div v-if="showSqlPanel" class="w-96 border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col shadow-2xl relative z-10">
+                <div class="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-900/50">
+                    <h3 class="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2"><i class="ph ph-terminal"></i> Raw SQL Editor</h3>
+                    <button @click="showSqlPanel = false" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"><i class="ph ph-x text-xl"></i></button>
+                </div>
+                <div class="p-4 flex flex-col flex-1 gap-4 overflow-hidden">
+                    <div>
+                        <label class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1 block">Database</label>
+                        <select v-model="sqlDb" class="w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500">
+                            <option value="">-- Select Database --</option>
+                            <option v-for="db in dbList" :value="db.name">{% raw %}{{ db.name }}{% endraw %}</option>
+                        </select>
+                    </div>
+                    <div class="flex-1 flex flex-col">
+                        <label class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1 block">Query</label>
+                        <textarea v-model="sqlQuery" placeholder="SELECT * FROM users;" class="flex-1 w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-slate-200 rounded-lg p-3 text-sm font-mono focus:outline-none focus:border-brand-500 resize-none"></textarea>
+                    </div>
+                    <button @click="executeSql" :disabled="!sqlDb || !sqlQuery || sqlLoading" class="w-full py-2 bg-brand-600 text-white rounded-lg font-medium hover:bg-brand-700 disabled:opacity-50 flex justify-center items-center gap-2">
+                        <i v-if="sqlLoading" class="ph ph-spinner animate-spin"></i>
+                        <span v-else>Execute Query</span>
+                    </button>
+                    <!-- Results Area -->
+                    <div class="h-1/3 border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800 flex flex-col overflow-hidden">
+                        <div class="p-2 border-b border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-900/50 flex justify-between">
+                            <span>Results</span>
+                            <span v-if="sqlResultTime" class="text-slate-400 dark:text-slate-500 font-normal">{% raw %}{{ sqlResultTime }}{% endraw %}ms</span>
+                        </div>
+                        <div class="flex-1 overflow-auto p-2 text-xs font-mono whitespace-pre">
+                            <div v-if="sqlError" class="text-red-500">{% raw %}{{ sqlError }}{% endraw %}</div>
+                            <div v-else-if="sqlSuccess">
+                                <div v-if="sqlIsSelect">
+                                    <table v-if="sqlRows.length > 0" class="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
+                                        <thead>
+                                            <tr>
+                                                <th v-for="(val, key) in sqlRows[0]" :key="key" class="px-2 py-1 text-left font-semibold text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">{% raw %}{{ key }}{% endraw %}</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+                                            <tr v-for="(row, idx) in sqlRows" :key="idx" class="hover:bg-white dark:hover:bg-slate-700">
+                                                <td v-for="(val, key) in row" :key="key" class="px-2 py-1 whitespace-nowrap border-b border-slate-100 dark:border-slate-800 truncate max-w-[200px] dark:text-slate-300" :title="val">{% raw %}{{ val }}{% endraw %}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                    <div v-else class="text-slate-500 italic">No rows returned.</div>
+                                </div>
+                                <div v-else class="text-green-600 dark:text-green-400">
+                                    Success. {% raw %}{{ sqlAffected }}{% endraw %} rows affected.
+                                </div>
+                            </div>
+                            <div v-else class="text-slate-400 dark:text-slate-600 italic">Run a query to see results here.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+
+        <!-- Command+K Global Modal -->
+        <div v-if="showCmdK" class="fixed inset-0 z-50 flex items-start justify-center pt-[15vh]">
+            <div class="absolute inset-0 bg-slate-900/20 dark:bg-slate-950/40 backdrop-blur-sm" @click="showCmdK = false"></div>
+            <div class="relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-xl shadow-2xl flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800">
+                <div class="flex items-center px-4 border-b border-slate-100 dark:border-slate-800">
+                    <i class="ph ph-magnifying-glass text-slate-400 text-lg"></i>
+                    <input ref="cmdKInput" v-model="cmdKSearch" @keydown.down.prevent="cmdKNav(1)" @keydown.up.prevent="cmdKNav(-1)" @keydown.enter.prevent="cmdKExecute" type="text" placeholder="Search databases..." class="w-full px-3 py-4 text-sm focus:outline-none text-slate-800 dark:text-slate-200 bg-transparent placeholder:text-slate-400" />
+                    <span class="text-[10px] font-semibold text-slate-400 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-0.5 bg-slate-50 dark:bg-slate-800 uppercase">ESC</span>
+                </div>
+
+                <div class="max-h-80 overflow-y-auto p-2 flex flex-col gap-1" ref="cmdKList">
+                    <!-- Home Option -->
+                    <div id="cmdk-item-0" @click="goTo('/')" @mouseenter="cmdKIndex = 0" class="px-3 py-2 rounded-lg flex items-center gap-3 cursor-pointer transition-colors" :class="cmdKIndex === 0 ? 'bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-400' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'">
+                        <i class="ph-duotone ph-house text-lg" :class="cmdKIndex === 0 ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400'"></i>
+                        <span class="font-medium text-sm">Home</span>
+                        <span v-if="cmdKIndex === 0" class="ml-auto text-[10px] font-semibold text-brand-500 uppercase tracking-wider">Jump</span>
+                    </div>
+
+                    <div v-if="filteredCmdKDbList.length > 0" class="px-3 py-1.5 mt-1 text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Databases</div>
+
+                    <!-- Databases List -->
+                    <div v-for="(db, i) in filteredCmdKDbList" :key="db.name" :id="'cmdk-item-' + (i + 1)" @click="goTo('/db/' + encodeURIComponent(db.name))" @mouseenter="cmdKIndex = i + 1" class="px-3 py-2 rounded-lg flex items-center gap-3 cursor-pointer transition-colors" :class="cmdKIndex === i + 1 ? 'bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-400' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'">
+                        <i class="ph-duotone ph-database text-lg" :class="cmdKIndex === i + 1 ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400'"></i>
+                        <span class="font-medium text-sm">{% raw %}{{ db.name }}{% endraw %}</span>
+                        <span v-if="cmdKIndex === i + 1" class="ml-auto text-[10px] font-semibold text-brand-500 uppercase tracking-wider">Jump</span>
+                    </div>
+
+                    <div v-if="filteredCmdKDbList.length === 0 && cmdKSearch" class="px-4 py-8 text-center text-sm text-slate-500">
+                        No databases found matching "{% raw %}{{ cmdKSearch }}{% endraw %}"
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toast Notification -->
+        <div v-if="toast.show" class="fixed bottom-6 right-6 z-[200] px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-fade-in-up" :class="toast.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'">
+            <i class="ph-bold" :class="toast.type === 'success' ? 'ph-check' : 'ph-warning'"></i>
+            <span class="text-sm font-medium">{% raw %}{{ toast.message }}{% endraw %}</span>
+        </div>
+
+        <!-- Custom Confirmation Modal -->
+        <div v-if="confirmModal.show" class="fixed inset-0 z-[300] flex items-center justify-center p-4">
+            <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200" @click="confirmModal.onCancel"></div>
+            <div class="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in duration-200 overflow-hidden">
+                <div class="p-8">
+                    <div class="w-16 h-16 rounded-2xl bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 flex items-center justify-center mb-6">
+                        <i class="ph-bold ph-warning-circle text-3xl"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-slate-800 dark:text-slate-100 mb-2">{% raw %}{{ confirmModal.title }}{% endraw %}</h3>
+                    <p class="text-slate-500 dark:text-slate-400 leading-relaxed text-sm">{% raw %}{{ confirmModal.message }}{% endraw %}</p>
+                </div>
+                <div class="p-6 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800 flex gap-3">
+                    <button @click="confirmModal.onCancel" class="flex-1 py-3 px-4 rounded-xl text-slate-600 dark:text-slate-400 font-bold hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors text-sm">
+                        Cancel
+                    </button>
+                    <button @click="confirmModal.onConfirm" class="flex-1 py-3 px-4 rounded-xl font-bold transition-all shadow-lg text-sm" :class="confirmModal.danger ? 'bg-red-600 hover:bg-red-700 text-white shadow-red-500/20' : 'bg-brand-600 hover:bg-brand-700 text-white shadow-brand-500/20'">
+                        Confirm
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Profiles Modal -->
+        <div v-if="showProfileModal" class="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-md" @click="showProfileModal = false"></div>
+            <div class="relative w-full max-w-2xl max-h-[calc(100vh-2rem)] bg-white dark:bg-slate-900 rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in duration-200">
+                <div class="px-8 py-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/50">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-brand-500 text-white flex items-center justify-center shadow-lg shadow-brand-500/20">
+                            <i class="ph-bold ph-hard-drives text-xl"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-xl font-bold text-slate-800 dark:text-slate-100">Server Profiles</h3>
+                            <p class="text-xs text-slate-500 dark:text-slate-400">Manage remote database connections</p>
+                        </div>
+                    </div>
+                    <button @click="showProfileModal = false" class="w-10 h-10 rounded-full flex items-center justify-center hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors text-slate-400 dark:text-slate-200">
+                        <i class="ph-bold ph-x text-xl"></i>
+                    </button>
+                </div>
+                
+                <div class="flex-1 overflow-y-auto p-8 flex flex-col gap-6">
+                    <div class="flex flex-col gap-4">
+                        <div v-for="p in profiles" :key="p.name" class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 flex items-center justify-between group/p">
+                            <div class="min-w-0 flex-1">
+                                <h4 class="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">
+                                    {% raw %}{{ p.name }}{% endraw %}
+                                    <span v-if="p.name === activeProfile" class="px-2 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 uppercase tracking-wider">Active</span>
+                                </h4>
+                                <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 truncate">{% raw %}{{ p.engine === 'postgresql' ? 'PostgreSQL' : 'MySQL' }} · {{ p.user }}@{{ p.host }}:{{ p.port }}{% endraw %}</p>
+                            </div>
+                            <div class="flex items-center gap-1 ml-4">
+                                <button @click="startEditProfile(p)" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-all" title="Edit Profile">
+                                    <i class="ph-bold ph-pencil-simple"></i>
+                                </button>
+                                <button v-if="profiles.length > 1" @click="deleteProfile(p.name)" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all" title="Delete Profile">
+                                    <i class="ph-bold ph-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="pt-6 border-t border-slate-100 dark:border-slate-800">
+                        <div class="flex items-center justify-between mb-4">
+                            <h4 class="text-sm font-bold text-slate-700 dark:text-slate-200">{% raw %}{{ isEditingProfile ? 'Edit Profile: ' + editingProfileOriginalName : 'Add New Profile' }}{% endraw %}</h4>
+                            <button v-if="isEditingProfile" @click="cancelEditProfile" class="text-xs text-brand-600 hover:underline font-medium">Cancel Edit</button>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="col-span-2">
+                                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">Database Type</label>
+                                <select v-model="newProfile.engine" @change="handleEngineChange" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand-500">
+                                    <option value="mysql">MySQL</option>
+                                    <option value="postgresql">PostgreSQL</option>
+                                </select>
+                            </div>
+                            <div class="col-span-2">
+                                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">Profile Name</label>
+                                <input v-model="newProfile.name" placeholder="e.g. Production" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand-500" />
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">Host</label>
+                                <input v-model="newProfile.host" placeholder="127.0.0.1" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand-500" />
+                            </div>
+                            <div v-if="newProfile.engine === 'postgresql'" class="col-span-2">
+                                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">Schema</label>
+                                <input v-model="newProfile.schema" placeholder="public" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand-500" />
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">Port</label>
+                                <input v-model="newProfile.port" type="number" placeholder="3306" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand-500" />
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">User</label>
+                                <input v-model="newProfile.user" placeholder="root" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand-500" />
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">Password</label>
+                                <input v-model="newProfile.password" type="password" placeholder="••••••••" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand-500" />
+                            </div>
+                            <button @click="isEditingProfile ? updateProfile() : createProfile()" :disabled="!newProfile.name || !newProfile.host" class="col-span-2 py-2 bg-brand-600 text-white rounded-xl font-bold hover:bg-brand-700 shadow-lg shadow-brand-500/20 disabled:opacity-50 text-sm flex items-center justify-center gap-2 transition-all">
+                                <i class="ph-bold" :class="isEditingProfile ? 'ph-check' : 'ph-plus'"></i>
+                                {% raw %}{{ isEditingProfile ? 'Save Changes' : 'Create Profile' }}{% endraw %}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Features & Shortcuts Modal -->
+        <div v-if="showFeaturesModal" class="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-md" @click="showFeaturesModal = false"></div>
+            <div class="relative w-full max-w-3xl bg-white dark:bg-slate-900 rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in duration-200">
+                <div class="px-8 py-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/50">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-brand-500 text-white flex items-center justify-center shadow-lg shadow-brand-500/20">
+                            <i class="ph-bold ph-lightning text-xl"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-xl font-bold text-slate-800 dark:text-slate-100">Features & Shortcuts</h3>
+                            <p class="text-xs text-slate-500 dark:text-slate-400">Master your database workstation</p>
+                        </div>
+                    </div>
+                    <button @click="showFeaturesModal = false" class="w-10 h-10 rounded-full flex items-center justify-center hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors text-slate-400 dark:text-slate-200">
+                        <i class="ph-bold ph-x text-xl"></i>
+                    </button>
+                </div>
+
+                <div class="flex-1 overflow-y-auto p-8 space-y-8 scrollbar-hide">
+                    <!-- Navigation Shortcuts -->
+                    <section>
+                        <h4 class="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center gap-2 text-nowrap">
+                            <i class="ph-bold ph-keyboard"></i> Core Navigation
+                        </h4>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 flex items-start gap-3">
+                                <div class="px-2 py-1 bg-white dark:bg-slate-700 rounded shadow-sm border border-slate-200 dark:border-slate-600 text-[10px] font-bold font-mono dark:text-slate-200 whitespace-nowrap flex-shrink-0">Ctrl/⌘ K</div>
+                                <div>
+                                    <p class="text-sm font-bold text-slate-700 dark:text-slate-200">Global Search</p>
+                                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Instantly jump between any database or return home from anywhere.</p>
+                                </div>
+                            </div>
+                            <div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 flex items-start gap-3">
+                                <div class="px-2 py-1 bg-white dark:bg-slate-700 rounded shadow-sm border border-slate-200 dark:border-slate-600 text-[10px] font-bold font-mono dark:text-slate-200 whitespace-nowrap flex-shrink-0">Ctrl/⌘ J</div>
+                                <div>
+                                    <p class="text-sm font-bold text-slate-700 dark:text-slate-200">Table Finder</p>
+                                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Quickly find and switch tables inside your current database.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Data Superpowers -->
+                    <section>
+                        <h4 class="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                            <i class="ph-bold ph-magic-wand"></i> Data Superpowers
+                        </h4>
+                        <div class="space-y-3">
+                            <div class="p-4 rounded-2xl bg-indigo-50/50 dark:bg-indigo-900/10 border border-indigo-100/50 dark:border-indigo-900/30 flex items-center gap-4">
+                                <div class="flex items-center gap-1 flex-shrink-0">
+                                    <div class="px-2 py-1 bg-white dark:bg-slate-700 rounded shadow-sm border border-slate-200 dark:border-slate-600 text-[10px] font-bold font-mono dark:text-slate-200 whitespace-nowrap">C</div>
+                                    <span class="text-slate-400">+</span>
+                                    <i class="ph-bold ph-mouse-simple text-indigo-500"></i>
+                                </div>
+                                <div>
+                                    <p class="text-sm font-bold text-slate-700 dark:text-slate-200">Instant Cell Copy</p>
+                                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Hold <span class="font-bold">C</span> and click any cell to copy its value. Teleport links are auto-disabled while holding C.</p>
+                                </div>
+                            </div>
+                            <div class="p-4 rounded-2xl bg-brand-50/50 dark:bg-brand-900/10 border border-brand-100/50 dark:border-brand-900/30 flex items-center gap-4">
+                                <div class="w-8 h-8 rounded-full bg-brand-500 text-white flex items-center justify-center shrink-0">
+                                    <i class="ph ph-arrow-square-out text-sm"></i>
+                                </div>
+                                <div>
+                                    <p class="text-sm font-bold text-slate-700 dark:text-slate-200">Teleport (FK Navigation)</p>
+                                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Click any Foreign Key ID to jump to that record in its parent table instantly.</p>
+                                </div>
+                            </div>
+                            <div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 flex items-center gap-4">
+                                <div class="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center shrink-0">
+                                    <i class="ph ph-cursor-text text-sm"></i>
+                                </div>
+                                <div>
+                                    <p class="text-sm font-bold text-slate-700 dark:text-slate-200">Inline Editing</p>
+                                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Double-click any cell (except Primary Keys) to edit and save data directly in the table.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Advanced Tools -->
+                    <section class="pt-4 border-t border-slate-100 dark:border-slate-800">
+                        <h4 class="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                            <i class="ph-bold ph-wrench"></i> Advanced Tools
+                        </h4>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div class="flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                                <i class="ph ph-magnifying-glass text-brand-500"></i>
+                                <span class="text-xs font-medium text-slate-600 dark:text-slate-300">Browse remote server databases</span>
+                            </div>
+                            <div class="flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                                <i class="ph ph-file-csv text-green-500"></i>
+                                <span class="text-xs font-medium text-slate-600 dark:text-slate-300">Export tables to CSV</span>
+                            </div>
+                            <div class="flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                                <i class="ph ph-upload-simple text-indigo-500"></i>
+                                <span class="text-xs font-medium text-slate-600 dark:text-slate-300">Import SQL dumps directly</span>
+                            </div>
+                            <div class="flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                                <i class="ph ph-terminal text-slate-700 dark:text-slate-300"></i>
+                                <span class="text-xs font-medium text-slate-600 dark:text-slate-300">Full Raw SQL Editor</span>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+
+                <div class="px-8 py-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800 flex justify-center">
+                    <button @click="showFeaturesModal = false" class="px-8 py-2 bg-slate-800 dark:bg-slate-100 text-white dark:text-slate-900 rounded-full text-sm font-bold hover:scale-105 transition-transform">
+                        Got it, thanks!
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script>
+        const { createApp, ref, onMounted, computed, reactive } = Vue;
+        window.PROFILE_NAME = {{ profile_name | tojson }};
+        window.PROFILE_ROOT = window.PROFILE_NAME ? `/p/${encodeURIComponent(window.PROFILE_NAME)}/` : '/';
+        window.API_BASE = window.PROFILE_NAME ? `/api/p/${encodeURIComponent(window.PROFILE_NAME)}` : '';
+
+        window.baseAppSetup = () => {
+            const isDark = ref(localStorage.getItem('theme') === 'dark');
+            const showFeaturesModal = ref(false);
+            
+            const isOnDashboard = computed(() => {
+                return window.location.pathname === window.PROFILE_ROOT;
+            });
+
+            const toggleDarkMode = () => {
+                isDark.value = !isDark.value;
+                localStorage.setItem('theme', isDark.value ? 'dark' : 'light');
+                if (isDark.value) {
+                    document.documentElement.classList.add('dark');
+                } else {
+                    document.documentElement.classList.remove('dark');
+                }
+            };
+
+            onMounted(() => {
+                if (isDark.value) {
+                    document.documentElement.classList.add('dark');
+                }
+            });
+
+            const showSqlPanel = ref(false);
+            const sqlDb = ref('');
+            const sqlQuery = ref('');
+            const sqlLoading = ref(false);
+            const sqlError = ref('');
+            const sqlSuccess = ref(false);
+            const sqlRows = ref([]);
+            const sqlIsSelect = ref(false);
+            const sqlAffected = ref(0);
+            const sqlResultTime = ref(null);
+
+            const dbList = ref([]);
+            const currentTable = ref(null);
+
+            const toast = ref({ show: false, message: '', type: 'success' });
+
+            // Custom Confirm State
+            const confirmModal = reactive({
+                show: false,
+                title: 'Confirm Action',
+                message: 'Are you sure you want to proceed?',
+                danger: false,
+                onConfirm: () => {},
+                onCancel: () => {}
+            });
+
+            const customConfirm = (title, message, isDanger = false) => {
+                return new Promise((resolve) => {
+                    confirmModal.title = title;
+                    confirmModal.message = message;
+                    confirmModal.danger = isDanger;
+                    confirmModal.show = true;
+                    confirmModal.onConfirm = () => {
+                        confirmModal.show = false;
+                        resolve(true);
+                    };
+                    confirmModal.onCancel = () => {
+                        confirmModal.show = false;
+                        resolve(false);
+                    };
+                });
+            };
+
+            const profiles = ref([]);
+            const activeProfile = ref(window.PROFILE_NAME || '');
+            const showProfileModal = ref(false);
+            const showProfileDropdown = ref(false);
+            const emptyProfile = () => ({ name: '', engine: 'mysql', host: '', port: 3306, user: '', password: '', schema: 'public' });
+            const newProfile = ref(emptyProfile());
+            
+            const isEditingProfile = ref(false);
+            const editingProfileOriginalName = ref('');
+
+            const fetchProfiles = async () => {
+                try {
+                    const res = await fetch('/api/profiles');
+                    const data = await res.json();
+                    if (data.success) {
+                        profiles.value = data.profiles;
+                        if (!window.PROFILE_NAME && !activeProfile.value) activeProfile.value = '';
+                    }
+                } catch(e) {
+                    console.error("Failed to fetch profiles");
+                }
+            };
+
+            const startEditProfile = (p) => {
+                isEditingProfile.value = true;
+                editingProfileOriginalName.value = p.name;
+                newProfile.value = { 
+                    name: p.name, 
+                    engine: p.engine || 'mysql',
+                    host: p.host, 
+                    port: p.port, 
+                    user: p.user, 
+                    password: '', // Don't pre-fill password for security
+                    schema: p.schema || 'public'
+                };
+            };
+
+            const cancelEditProfile = () => {
+                isEditingProfile.value = false;
+                editingProfileOriginalName.value = '';
+                newProfile.value = emptyProfile();
+            };
+
+            const handleEngineChange = () => {
+                if (newProfile.value.engine === 'postgresql') {
+                    if (!newProfile.value.port || newProfile.value.port === 3306) newProfile.value.port = 5432;
+                    if (!newProfile.value.user || newProfile.value.user === 'root') newProfile.value.user = 'postgres';
+                } else {
+                    if (!newProfile.value.port || newProfile.value.port === 5432) newProfile.value.port = 3306;
+                    if (!newProfile.value.user || newProfile.value.user === 'postgres') newProfile.value.user = 'root';
+                }
+            };
+
+            const handleProfileSwitch = async (name) => {
+                showProfileDropdown.value = false;
+                window.location.href = `/p/${encodeURIComponent(name)}/`;
+            };
+
+            const switchProfile = async () => {
+                try {
+                    const res = await fetch('/api/profiles/active', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name: activeProfile.value })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        window.location.href = `/p/${encodeURIComponent(activeProfile.value)}/`;
+                    } else {
+                        showToast(data.error, 'error');
+                    }
+                } catch(e) {
+                    showToast('Failed to switch profile', 'error');
+                }
+            };
+
+            const createProfile = async () => {
+                try {
+                    const res = await fetch('/api/profiles', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(newProfile.value)
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        showToast('Profile created successfully');
+                        newProfile.value = emptyProfile();
+                        fetchProfiles();
+                    } else {
+                        showToast(data.error, 'error');
+                    }
+                } catch(e) {
+                    showToast('Failed to create profile', 'error');
+                }
+            };
+
+            const updateProfile = async () => {
+                try {
+                    const res = await fetch(`/api/profiles/${editingProfileOriginalName.value}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(newProfile.value)
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        showToast('Profile updated successfully');
+                        const oldName = editingProfileOriginalName.value;
+                        const newName = newProfile.value.name;
+                        
+                        cancelEditProfile();
+                        await fetchProfiles();
+                        
+                        // If we renamed the active profile, the backend update_profile handles it,
+                        // but we might need to reload if host/credentials changed.
+                        if (oldName === activeProfile.value) {
+                            window.location.href = `/p/${encodeURIComponent(newName)}/`;
+                        }
+                    } else {
+                        showToast(data.error, 'error');
+                    }
+                } catch(e) {
+                    showToast('Failed to update profile', 'error');
+                }
+            };
+
+            const deleteProfile = async (name) => {
+                const confirmed = await customConfirm(
+                    'Delete Profile',
+                    `Are you sure you want to permanently delete the profile "${name}"? This action cannot be undone.`,
+                    true
+                );
+                
+                if(!confirmed) return;
+                
+                try {
+                    const res = await fetch(`/api/profiles/${name}`, { method: 'DELETE' });
+                    const data = await res.json();
+                    if (data.success) {
+                        showToast('Profile deleted');
+                        if (name === activeProfile.value) {
+                            window.location.href = '/';
+                        } else {
+                            fetchProfiles();
+                        }
+                    } else {
+                        showToast(data.error, 'error');
+                    }
+                } catch(e) {
+                    showToast('Failed to delete profile', 'error');
+                }
+            };
+
+            // Cmd+K State
+            const showCmdK = ref(false);
+            const cmdKSearch = ref('');
+            const cmdKIndex = ref(0);
+            const cmdKInput = ref(null);
+
+            const filteredCmdKDbList = computed(() => {
+                if(!cmdKSearch.value) return dbList.value;
+                return dbList.value.filter(db => db.name.toLowerCase().includes(cmdKSearch.value.toLowerCase()));
+            });
+
+            const cmdKList = ref(null);
+            const cmdKNav = (dir) => {
+                const max = filteredCmdKDbList.value.length; // +1 for home (index 0)
+                cmdKIndex.value = (cmdKIndex.value + dir + (max + 1)) % (max + 1);
+                Vue.nextTick(() => {
+                    const el = document.getElementById('cmdk-item-' + cmdKIndex.value);
+                    if(el) {
+                        el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                    }
+                });
+            };
+
+            const cmdKExecute = () => {
+                if(cmdKIndex.value === 0) {
+                    goTo('/');
+                } else {
+                    const db = filteredCmdKDbList.value[cmdKIndex.value - 1];
+                    if(db) goTo('/db/' + encodeURIComponent(db.name));
+                }
+                showCmdK.value = false;
+            };
+
+            onMounted(() => {
+                document.addEventListener('keydown', (e) => {
+                    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+                        e.preventDefault();
+                        showCmdK.value = true;
+                        cmdKSearch.value = '';
+                        cmdKIndex.value = 0;
+                        setTimeout(() => { if(cmdKInput.value) cmdKInput.value.focus(); }, 50);
+                    }
+                    if (e.key === 'Escape' && showCmdK.value) {
+                        showCmdK.value = false;
+                    }
+                });
+            });
+
+            const showToast = (msg, type='success') => {
+                toast.value = { show: true, message: msg, type };
+                setTimeout(() => toast.value.show = false, 3000);
+            };
+
+            const goTo = (url) => {
+                if (window.PROFILE_NAME && url === '/') window.location.href = window.PROFILE_ROOT;
+                else if (window.PROFILE_NAME && url.startsWith('/db/')) window.location.href = window.PROFILE_ROOT + url.slice(1);
+                else window.location.href = url;
+            };
+
+            const executeSql = async () => {
+                if(!sqlDb.value || !sqlQuery.value) return;
+                sqlLoading.value = true;
+                sqlError.value = '';
+                sqlSuccess.value = false;
+                const start = performance.now();
+
+                try {
+                    const res = await fetch(window.API_BASE + '/sql', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ dbname: sqlDb.value, query: sqlQuery.value })
+                    });
+                    const data = await res.json();
+
+                    if(data.error) {
+                        sqlError.value = data.error;
+                    } else {
+                        sqlSuccess.value = true;
+                        sqlIsSelect.value = data.is_select;
+                        if(data.is_select) {
+                            sqlRows.value = data.rows;
+                        } else {
+                            sqlAffected.value = data.affected_rows;
+                        }
+                    }
+                } catch(e) {
+                    sqlError.value = "Network error";
+                } finally {
+                    sqlLoading.value = false;
+                    sqlResultTime.value = Math.round(performance.now() - start);
+                }
+            };
+
+            // fetch db list for sidebar
+            const fetchDbList = async () => {
+                try {
+                    if(window.INITIAL_DATABASES) {
+                        dbList.value = window.INITIAL_DATABASES;
+                    } else {
+                        if (!window.API_BASE) return;
+                        const res = await fetch(window.API_BASE + '/dbs/list');
+                        const data = await res.json();
+                        if(data.success) {
+                            dbList.value = data.databases.map(name => ({ name }));
+                        }
+                    }
+                } catch(e) {
+                    console.error("Failed to fetch databases");
+                }
+            };
+
+            onMounted(() => {
+                fetchProfiles();
+                fetchDbList();
+            });
+
+            return {
+                isDark, toggleDarkMode, showFeaturesModal, isOnDashboard,
+                showSqlPanel, sqlDb, sqlQuery, sqlLoading, sqlError, sqlSuccess, sqlRows, sqlIsSelect, sqlAffected, sqlResultTime, dbList, currentTable, executeSql,
+                showCmdK, cmdKSearch, cmdKIndex, cmdKInput, cmdKList, filteredCmdKDbList, cmdKNav, cmdKExecute,
+                toast, showToast, goTo,
+                profiles, activeProfile, showProfileModal, showProfileDropdown, newProfile, isEditingProfile, editingProfileOriginalName, fetchProfiles, switchProfile, handleProfileSwitch, handleEngineChange, createProfile, updateProfile, deleteProfile, startEditProfile, cancelEditProfile,
+                confirmModal, customConfirm
+            };
+        };
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

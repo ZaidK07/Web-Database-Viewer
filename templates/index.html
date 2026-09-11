@@ -1,0 +1,387 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="h-full flex flex-col p-8 relative">
+    <div class="absolute top-10 left-10 w-64 h-64 bg-purple-200 dark:bg-purple-900/20 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob"></div>
+    <div class="absolute top-10 right-10 w-64 h-64 bg-brand-200 dark:bg-brand-900/20 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob" style="animation-delay: 2s"></div>
+
+    <div class="max-w-7xl w-full mx-auto z-10 flex flex-col h-full">
+        <div class="flex items-center justify-between mb-8">
+            <div>
+                <h2 class="text-3xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">Databases</h2>
+                <p class="text-slate-500 dark:text-slate-400 mt-1">Manage your connected {{ 'PostgreSQL' if profile.engine == 'postgresql' else 'MySQL' }} databases</p>
+            </div>
+
+            <div class="flex gap-4 items-center">
+                <button @click="openBrowseModal" class="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 font-medium hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm flex items-center gap-1.5 text-sm transition-colors">
+                    <i class="ph-duotone ph-magnifying-glass"></i> Browse Server
+                </button>
+
+                <div class="flex gap-2 items-center bg-white dark:bg-slate-900 p-1 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800">
+                    <input v-model="newDbName" @keyup.enter="addDb" type="text" placeholder="Connect to database..." class="px-3 py-1.5 border-none bg-transparent text-sm focus:outline-none focus:ring-0 w-48 dark:text-slate-200" />
+                    <button @click="addDb" :disabled="isAdding" class="px-3 py-1.5 rounded-lg bg-brand-600 text-white font-medium hover:bg-brand-700 shadow-sm flex items-center gap-1.5 disabled:opacity-50 text-sm">
+                        <i v-if="isAdding" class="ph ph-spinner animate-spin"></i>
+                        <i v-else class="ph-bold ph-link"></i> Connect
+                    </button>
+                </div>
+
+                <div class="flex gap-2 items-center bg-white dark:bg-slate-900 p-1 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800">
+                    <input v-model="importDbName" type="text" placeholder="New DB name for import..." class="px-3 py-1.5 border-none bg-transparent text-sm focus:outline-none focus:ring-0 w-48 dark:text-slate-200" />
+                    <input type="file" ref="fileInput" @change="handleImport" accept=".sql" class="hidden" />
+                    <button @click="triggerFileInput" :disabled="isImporting" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 shadow-sm flex items-center gap-1.5 disabled:opacity-50 text-sm">
+                        <i v-if="isImporting" class="ph ph-spinner animate-spin"></i>
+                        <i v-else class="ph-bold ph-upload-simple"></i> Upload-DB .sql
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div v-if="databases.length === 0" class="flex-1 flex flex-col items-center justify-center bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+            <div class="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 mb-4">
+                <i class="ph-duotone ph-database text-3xl"></i>
+            </div>
+            <h3 class="text-lg font-medium text-slate-700 dark:text-slate-300">No databases connected</h3>
+            <p class="text-sm text-slate-500 dark:text-slate-400 mt-1 text-center max-w-sm">Enter a database name in the input above to connect and start browsing.</p>
+        </div>
+
+        <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4 gap-6">
+            <div v-for="db in databases" :key="db.name"                  class="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-sm border border-slate-100 dark:border-slate-800 hover:shadow-md dark:hover:shadow-indigo-900/20 transition-all relative group cursor-pointer"
+                 @click="(db.accessible || db.accessible === null) ? goTo('/db/' + encodeURIComponent(db.name)) : null"
+                 :class="db.accessible === false ? 'opacity-75' : ''">
+
+                <div class="flex justify-between items-start mb-4">
+                    <div class="w-12 h-12 rounded-full flex items-center justify-center" :class="db.accessible ? 'bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400' : 'bg-red-50 dark:bg-red-900/30 text-red-500'">
+                        <i class="ph-duotone ph-database text-2xl"></i>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="px-2.5 py-1 rounded-full text-xs font-medium border flex items-center gap-1" :class="db.accessible === null ? 'bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700' : (db.accessible ? 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800' : 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800')">
+                            <i v-if="db.accessible === null" class="ph ph-spinner animate-spin"></i>
+                            <i v-else-if="!db.accessible" class="ph-fill ph-warning-circle"></i>
+                            {% raw %}{{ db.accessible === null ? 'Checking...' : (db.accessible ? 'Connected' : 'Unreachable') }}{% endraw %}
+                        </span>
+                        <button @click.stop="exportDb(db.name)" class="text-slate-300 dark:text-slate-600 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors p-1" title="Export Database">
+                            <i class="ph ph-download-simple text-lg"></i>
+                        </button>
+                        <button @click.stop="removeDb(db.name)" class="text-slate-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 transition-colors p-1" title="Remove Database">
+                            <i class="ph ph-trash text-lg"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100 mb-1 truncate" :title="db.name">{% raw %}{{ db.name }}{% endraw %}</h3>
+                <p class="text-sm text-slate-500 dark:text-slate-400">Click to browse tables</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Browse Server Modal -->
+    <div v-if="showBrowseModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-slate-900/40 dark:bg-slate-950/60 backdrop-blur-sm" @click="showBrowseModal = false"></div>
+        <div class="relative bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-4xl max-h-[80vh] flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800">
+            <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50">
+                <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                    <i class="ph-duotone ph-hard-drives text-brand-600 text-xl"></i>
+                    Remote Server Databases
+                </h3>
+                <button @click="showBrowseModal = false" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors p-1">
+                    <i class="ph-bold ph-x text-lg"></i>
+                </button>
+            </div>
+            
+            <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center gap-3">
+                <input v-model="newRemoteDbName" @keyup.enter="createRemoteDb" type="text" placeholder="Create new database..." class="flex-1 px-4 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 dark:text-slate-200 rounded-xl text-sm focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 shadow-sm" />
+                <button @click="createRemoteDb" :disabled="isCreatingRemote" class="px-4 py-2 rounded-xl bg-brand-600 text-white font-medium hover:bg-brand-700 shadow-sm flex items-center gap-2 disabled:opacity-50 text-sm">
+                    <i v-if="isCreatingRemote" class="ph ph-spinner animate-spin"></i>
+                    <i v-else class="ph-bold ph-plus"></i> Create
+                </button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto p-6 bg-slate-50/50 dark:bg-slate-900/50">
+                <div v-if="isLoadingRemote" class="flex flex-col items-center justify-center py-12 text-slate-400 dark:text-slate-500">
+                    <i class="ph ph-spinner animate-spin text-4xl mb-3 text-brand-500"></i>
+                    <span class="text-sm font-medium">Scanning server for databases...</span>
+                </div>
+                
+                <div v-else-if="remoteDatabases.length === 0" class="text-center py-8 text-slate-500">
+                    No databases found on this server.
+                </div>
+
+                <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div v-for="dbName in remoteDatabases" :key="dbName" class="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-between hover:border-brand-300 dark:hover:border-brand-500 transition-colors">
+                        <div class="flex items-center gap-3 min-w-0">
+                            <i class="ph-duotone ph-database text-slate-400 dark:text-slate-500 text-xl shrink-0"></i>
+                            <span class="font-medium text-slate-700 dark:text-slate-200 break-all" :title="dbName">{% raw %}{{ dbName }}{% endraw %}</span>
+                        </div>
+                        <div class="flex items-center gap-2 shrink-0">
+                            <button v-if="databases.find(d => d.name === dbName)" disabled class="text-xs font-semibold px-2.5 py-1 rounded-md bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-600 cursor-not-allowed">
+                                Added
+                            </button>
+                            <button v-else @click="addRemoteDb(dbName)" class="text-xs font-semibold px-2.5 py-1 rounded-md bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-400 border border-brand-200 dark:border-brand-800 hover:bg-brand-600 hover:text-white dark:hover:text-white hover:border-brand-600 transition-colors">
+                                Add
+                            </button>
+                            <button @click="deleteRemoteDb(dbName)" class="text-xs font-semibold px-2.5 py-1 rounded-md bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800 hover:bg-red-600 hover:text-white dark:hover:text-white hover:border-red-600 transition-colors" title="Drop Database">
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    window.INITIAL_DATABASES = {{ databases | tojson | safe }};
+
+    createApp({
+        setup() {
+            const baseSetup = window.baseAppSetup();
+
+            const databases = ref(window.INITIAL_DATABASES || []);
+            const newDbName = ref('');
+            const isAdding = ref(false);
+
+            // Sync with base layout's dbList for the SQL sidebar
+            baseSetup.dbList.value = databases.value;
+
+            const checkSingleDb = async (index) => {
+                const db = databases.value[index];
+                try {
+                    const res = await fetch(`${window.API_BASE}/dbs/${encodeURIComponent(db.name)}/check`);
+                    const data = await res.json();
+                    if(data.success) {
+                        databases.value[index].accessible = data.accessible;
+                    } else {
+                        databases.value[index].accessible = false;
+                    }
+                } catch(e) {
+                    databases.value[index].accessible = false;
+                }
+            };
+
+            const fetchStatuses = () => {
+                // Fire off check requests for all databases concurrently
+                databases.value.forEach((db, index) => {
+                    checkSingleDb(index);
+                });
+            };
+
+            Vue.onMounted(() => {
+                fetchStatuses();
+            });
+
+            const addDb = async () => {
+                const name = newDbName.value.trim();
+                if(!name) return;
+
+                isAdding.value = true;
+                try {
+                    const res = await fetch(window.API_BASE + '/dbs', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ name })
+                    });
+                    const data = await res.json();
+                    if(data.error) {
+                        baseSetup.showToast(data.error, 'error');
+                    } else {
+                        databases.value.push({ name: data.name, accessible: data.accessible });
+                        baseSetup.dbList.value = databases.value;
+                        newDbName.value = '';
+                        baseSetup.showToast('Database added successfully');
+                    }
+                } catch(e) {
+                    baseSetup.showToast('Network error', 'error');
+                } finally {
+                    isAdding.value = false;
+                }
+            };
+
+            const removeDb = async (name) => {
+                const confirmed = await baseSetup.customConfirm(
+                    'Remove Database',
+                    `Are you sure you want to remove the database "${name}" from your tracked list? This will not affect the data on the server.`,
+                    false
+                );
+                
+                if(!confirmed) return;
+                
+                try {
+                    const res = await fetch(`${window.API_BASE}/dbs/${encodeURIComponent(name)}`, { method: 'DELETE' });
+                    if(res.ok) {
+                        databases.value = databases.value.filter(d => d.name !== name);
+                        baseSetup.dbList.value = databases.value;
+                        baseSetup.showToast('Database removed');
+                    }
+                } catch(e) {
+                    baseSetup.showToast('Error removing database', 'error');
+                }
+            };
+
+            const isImporting = ref(false);
+            const fileInput = ref(null);
+            const importDbName = ref('');
+
+            const showBrowseModal = ref(false);
+            const remoteDatabases = ref([]);
+            const isLoadingRemote = ref(false);
+            const newRemoteDbName = ref('');
+            const isCreatingRemote = ref(false);
+
+            const openBrowseModal = async () => {
+                showBrowseModal.value = true;
+                isLoadingRemote.value = true;
+                try {
+                    const res = await fetch(window.API_BASE + '/remote_dbs');
+                    const data = await res.json();
+                    if (data.success) {
+                        remoteDatabases.value = data.databases;
+                    } else {
+                        baseSetup.showToast(data.error || 'Failed to fetch databases', 'error');
+                    }
+                } catch(e) {
+                    baseSetup.showToast('Network error fetching remote databases', 'error');
+                } finally {
+                    isLoadingRemote.value = false;
+                }
+            };
+
+            const deleteRemoteDb = async (name) => {
+                const confirmed = await baseSetup.customConfirm(
+                    'DROP Database',
+                    `DANGER: Are you sure you want to completely DROP the database "${name}" from the server? This action CANNOT be undone and all data will be lost forever.`,
+                    true
+                );
+                
+                if(!confirmed) return;
+                
+                try {
+                    const res = await fetch(`${window.API_BASE}/remote_dbs/${encodeURIComponent(name)}`, {
+                        method: 'DELETE'
+                    });
+                    const data = await res.json();
+                    if(data.error) {
+                        baseSetup.showToast(data.error, 'error');
+                    } else {
+                        baseSetup.showToast(`Database ${name} deleted successfully`);
+                        remoteDatabases.value = remoteDatabases.value.filter(d => d !== name);
+                        databases.value = databases.value.filter(d => d.name !== name);
+                        baseSetup.dbList.value = databases.value;
+                    }
+                } catch(e) {
+                    baseSetup.showToast('Error deleting database', 'error');
+                }
+            };
+
+            const createRemoteDb = async () => {
+                const name = newRemoteDbName.value.trim();
+                if(!name) return;
+                
+                isCreatingRemote.value = true;
+                try {
+                    const res = await fetch(window.API_BASE + '/remote_dbs', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ name })
+                    });
+                    const data = await res.json();
+                    if(data.error) {
+                        baseSetup.showToast(data.error, 'error');
+                    } else {
+                        baseSetup.showToast(`Database ${name} created successfully`);
+                        remoteDatabases.value.unshift(name);
+                        newRemoteDbName.value = '';
+                    }
+                } catch(e) {
+                    baseSetup.showToast('Error creating database', 'error');
+                } finally {
+                    isCreatingRemote.value = false;
+                }
+            };
+
+            const addRemoteDb = async (name) => {
+                if (databases.value.find(d => d.name === name)) {
+                    baseSetup.showToast(`${name} is already connected`);
+                    return;
+                }
+
+                try {
+                    const res = await fetch(window.API_BASE + '/dbs', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ name })
+                    });
+                    const data = await res.json();
+                    if(data.error) {
+                        baseSetup.showToast(data.error, 'error');
+                    } else {
+                        databases.value.push({ name: data.name, accessible: data.accessible });
+                        baseSetup.dbList.value = databases.value;
+                        baseSetup.showToast(`Connected to ${name}`);
+                    }
+                } catch(e) {
+                    baseSetup.showToast(`Error connecting to ${name}`, 'error');
+                }
+            };
+
+            const triggerFileInput = () => {
+                if(!importDbName.value.trim()) {
+                    baseSetup.showToast('Please enter a new database name for import', 'error');
+                    return;
+                }
+                fileInput.value.click();
+            };
+
+            const handleImport = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const name = importDbName.value.trim();
+                if (!name) return;
+
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('name', name);
+
+                isImporting.value = true;
+                try {
+                    const res = await fetch(window.API_BASE + '/dbs/import', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const data = await res.json();
+                    if(data.error) {
+                        baseSetup.showToast(data.error, 'error');
+                    } else {
+                        if(!databases.value.find(d => d.name === data.name)) {
+                            databases.value.push({ name: data.name, accessible: data.accessible });
+                            baseSetup.dbList.value = databases.value;
+                        }
+                        importDbName.value = '';
+                        baseSetup.showToast('Database imported successfully');
+                    }
+                } catch(err) {
+                    baseSetup.showToast('Network error during import', 'error');
+                } finally {
+                    isImporting.value = false;
+                    e.target.value = '';
+                }
+            };
+
+            const exportDb = (name) => {
+                window.location.href = `${window.API_BASE}/db/${encodeURIComponent(name)}/export`;
+            };
+
+            return {
+                ...baseSetup,
+                databases, newDbName, isAdding, addDb, removeDb,
+                isImporting, fileInput, importDbName, triggerFileInput, handleImport, exportDb,
+                showBrowseModal, remoteDatabases, isLoadingRemote, openBrowseModal, addRemoteDb,
+                newRemoteDbName, isCreatingRemote, createRemoteDb, deleteRemoteDb
+            };
+        }
+    }).mount('#app');
+</script>
+{% endblock %}

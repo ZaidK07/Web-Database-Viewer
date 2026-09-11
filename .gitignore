@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+.env
+db_list.json
+plan.md
+reference_frontend.html
+.DS_Store
+profiles*

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="min-h-full p-8 flex items-center justify-center">
+    <div class="w-full max-w-4xl">
+        <div class="text-center mb-8">
+            <div class="w-16 h-16 mx-auto rounded-2xl bg-brand-500 text-white flex items-center justify-center shadow-xl shadow-brand-500/20 mb-4">
+                <i class="ph-duotone ph-hard-drives text-3xl"></i>
+            </div>
+            <h2 class="text-3xl font-semibold text-slate-800 dark:text-white">Choose a server profile</h2>
+            <p class="text-slate-500 dark:text-slate-400 mt-2">Your selected profile stays in the URL when you browse and refresh.</p>
+        </div>
+
+        <div v-if="profiles.length" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <button v-for="p in profiles" :key="p.name" @click="handleProfileSwitch(p.name)" class="text-left p-6 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-brand-400 dark:hover:border-brand-500 hover:shadow-lg transition-all group">
+                <div class="flex items-start justify-between gap-4">
+                    <div class="w-11 h-11 rounded-xl bg-slate-100 dark:bg-slate-800 text-brand-500 flex items-center justify-center group-hover:bg-brand-500 group-hover:text-white transition-colors">
+                        <i class="ph-duotone ph-database text-2xl"></i>
+                    </div>
+                    <span class="px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider" :class="p.engine === 'postgresql' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300' : 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300'">{% raw %}{{ p.engine === 'postgresql' ? 'PostgreSQL' : 'MySQL' }}{% endraw %}</span>
+                </div>
+                <h3 class="mt-5 text-lg font-bold text-slate-800 dark:text-slate-100">{% raw %}{{ p.name }}{% endraw %}</h3>
+                <p class="mt-1 text-sm text-slate-500 dark:text-slate-400 truncate">{% raw %}{{ p.user }}@{{ p.host }}:{{ p.port }}{% endraw %}</p>
+            </button>
+        </div>
+
+        <div v-else class="p-10 text-center bg-white dark:bg-slate-900 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700">
+            <p class="text-slate-500 dark:text-slate-400 mb-4">No profiles yet.</p>
+            <button @click="showProfileModal = true" class="px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold">Create your first profile</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    createApp({ setup() { return window.baseAppSetup(); } }).mount('#app');
+</script>
+{% endblock %}
