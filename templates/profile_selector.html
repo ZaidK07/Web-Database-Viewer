@@ -1,32 +1,199 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="min-h-full p-8 flex items-center justify-center">
-    <div class="w-full max-w-4xl">
-        <div class="text-center mb-8">
-            <div class="w-16 h-16 mx-auto rounded-2xl bg-brand-500 text-white flex items-center justify-center shadow-xl shadow-brand-500/20 mb-4">
+<div class="flex-1 w-full p-6 md:p-10 overflow-y-auto">
+    <div class="max-w-6xl mx-auto">
+        <!-- Header -->
+        <div class="flex items-center gap-4 mb-8">
+            <div class="w-14 h-14 rounded-2xl bg-brand-500 text-white flex items-center justify-center shadow-xl shadow-brand-500/20 shrink-0">
                 <i class="ph-duotone ph-hard-drives text-3xl"></i>
             </div>
-            <h2 class="text-3xl font-semibold text-slate-800 dark:text-white">Choose a server profile</h2>
-            <p class="text-slate-500 dark:text-slate-400 mt-2">Your selected profile stays in the URL when you browse and refresh.</p>
+            <div>
+                <h2 class="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white tracking-tight">Server Profiles</h2>
+                <p class="text-slate-500 dark:text-slate-400 text-sm mt-0.5">Select a database server to browse or manage connection credentials.</p>
+            </div>
         </div>
 
-        <div v-if="profiles.length" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <button v-for="p in profiles" :key="p.name" @click="handleProfileSwitch(p.name)" class="text-left p-6 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-brand-400 dark:hover:border-brand-500 hover:shadow-lg transition-all group">
-                <div class="flex items-start justify-between gap-4">
-                    <div class="w-11 h-11 rounded-xl bg-slate-100 dark:bg-slate-800 text-brand-500 flex items-center justify-center group-hover:bg-brand-500 group-hover:text-white transition-colors">
-                        <i class="ph-duotone ph-database text-2xl"></i>
-                    </div>
-                    <span class="px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider" :class="p.engine === 'postgresql' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300' : 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300'">{% raw %}{{ p.engine === 'postgresql' ? 'PostgreSQL' : 'MySQL' }}{% endraw %}</span>
+        <!-- Main 2-Column Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            <!-- Left Column: Available Profiles List (7 cols) -->
+            <div class="lg:col-span-7 flex flex-col gap-4">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                        <span>Configured Servers</span>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold">{% raw %}{{ profiles.length }}{% endraw %}</span>
+                    </h3>
+                    <span class="text-xs text-slate-400 dark:text-slate-500">Click a card to connect</span>
                 </div>
-                <h3 class="mt-5 text-lg font-bold text-slate-800 dark:text-slate-100">{% raw %}{{ p.name }}{% endraw %}</h3>
-                <p class="mt-1 text-sm text-slate-500 dark:text-slate-400 truncate">{% raw %}{{ p.user }}@{{ p.host }}:{{ p.port }}{% endraw %}</p>
-            </button>
-        </div>
 
-        <div v-else class="p-10 text-center bg-white dark:bg-slate-900 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700">
-            <p class="text-slate-500 dark:text-slate-400 mb-4">No profiles yet.</p>
-            <button @click="showProfileModal = true" class="px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold">Create your first profile</button>
+                <div v-if="profiles.length" class="flex flex-col gap-3">
+                    <div v-for="p in profiles" :key="p.name" 
+                         @click="handleProfileSwitch(p.name)" 
+                         class="p-5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-brand-400 dark:hover:border-brand-500 hover:shadow-md transition-all cursor-pointer flex items-center justify-between group">
+                        
+                        <div class="flex items-center gap-4 min-w-0">
+                            <div class="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 text-brand-500 flex items-center justify-center shrink-0 group-hover:bg-brand-500 group-hover:text-white transition-colors">
+                                <i class="ph-duotone ph-database text-2xl"></i>
+                            </div>
+                            <div class="min-w-0">
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    <h4 class="font-bold text-slate-800 dark:text-slate-100 text-base truncate">{% raw %}{{ p.name }}{% endraw %}</h4>
+                                    <span class="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider shrink-0" 
+                                          :class="p.engine === 'postgresql' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300' : 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300'">
+                                        {% raw %}{{ p.engine === 'postgresql' ? 'PostgreSQL' : 'MySQL' }}{% endraw %}
+                                    </span>
+                                    <span v-if="p.name === activeProfile" class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 uppercase tracking-wider shrink-0">
+                                        Active
+                                    </span>
+                                </div>
+                                <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 truncate">
+                                    {% raw %}{{ p.user }}@{{ p.host }}:{{ p.port }}{% endraw %}
+                                    <span v-if="p.schema && p.engine === 'postgresql'" class="opacity-75">· schema: {% raw %}{{ p.schema }}{% endraw %}</span>
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center gap-1.5 shrink-0 ml-4">
+                            <button @click.stop="startEditProfile(p)" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-all" title="Edit Profile">
+                                <i class="ph-bold ph-pencil-simple text-base"></i>
+                            </button>
+                            <button v-if="profiles.length > 1" @click.stop="deleteProfile(p.name)" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all" title="Delete Profile">
+                                <i class="ph-bold ph-trash text-base"></i>
+                            </button>
+                            <span class="ml-1 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 group-hover:bg-brand-600 group-hover:text-white text-xs font-semibold flex items-center gap-1 transition-all shadow-sm">
+                                Connect <i class="ph-bold ph-arrow-right text-[10px]"></i>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-else class="p-12 text-center bg-white dark:bg-slate-900 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700">
+                    <i class="ph-duotone ph-hard-drives text-4xl text-slate-400 mb-3"></i>
+                    <p class="text-slate-500 dark:text-slate-400 mb-1 font-medium">No server profiles yet.</p>
+                    <p class="text-xs text-slate-400">Fill in the form on the right to create your first connection profile.</p>
+                </div>
+            </div>
+
+            <!-- Right Column: Dedicated Add/Edit Profile Form (5 cols) -->
+            <div class="lg:col-span-5">
+                <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm sticky top-6">
+                    <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-100 dark:border-slate-800">
+                        <div>
+                            <h3 class="text-base font-bold text-slate-800 dark:text-slate-100">
+                                {% raw %}{{ isEditingProfile ? 'Edit Profile: ' + editingProfileOriginalName : 'Add New Profile' }}{% endraw %}
+                            </h3>
+                            <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                {% raw %}{{ isEditingProfile ? 'Update credentials and connection settings' : 'Configure a new database server connection' }}{% endraw %}
+                            </p>
+                        </div>
+                        <button v-if="isEditingProfile" @click="cancelEditProfile" class="text-xs text-brand-600 dark:text-brand-400 hover:underline font-semibold">
+                            Cancel
+                        </button>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3.5">
+                        <div class="col-span-2 relative">
+                            <label class="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1.5 block">Database Type</label>
+                            
+                            <!-- Custom Selector Trigger Button -->
+                            <button type="button" 
+                                    @click="showEngineDropdown = !showEngineDropdown"
+                                    class="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl text-sm flex items-center justify-between text-left focus:outline-none focus:border-brand-500 shadow-sm transition-all hover:border-slate-400 dark:hover:border-slate-600">
+                                <div class="flex items-center gap-2.5">
+                                    <div class="w-6 h-6 rounded-lg flex items-center justify-center text-xs shadow-sm"
+                                         :class="newProfile.engine === 'postgresql' ? 'bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300' : 'bg-sky-100 dark:bg-sky-900/60 text-sky-700 dark:text-sky-300'">
+                                        <i class="ph-bold" :class="newProfile.engine === 'postgresql' ? 'ph-database' : 'ph-hard-drives'"></i>
+                                    </div>
+                                    <span class="font-semibold text-sm">
+                                        {% raw %}{{ newProfile.engine === 'postgresql' ? 'PostgreSQL' : 'MySQL' }}{% endraw %}
+                                    </span>
+                                </div>
+                                <i class="ph-bold ph-caret-down text-slate-400 text-sm transition-transform duration-200" :class="{ 'rotate-180': showEngineDropdown }"></i>
+                            </button>
+
+                            <!-- Backdrop to close on click outside -->
+                            <div v-if="showEngineDropdown" 
+                                 class="fixed inset-0 z-40" 
+                                 @click="showEngineDropdown = false"></div>
+
+                            <!-- Custom Popover Menu -->
+                            <div v-if="showEngineDropdown" 
+                                 class="absolute left-0 right-0 top-full mt-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl z-50 p-1.5 flex flex-col gap-1 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                                
+                                <button type="button"
+                                        @click="setEngine('mysql')"
+                                        class="w-full p-2.5 rounded-xl flex items-center justify-between transition-all text-left group"
+                                        :class="newProfile.engine === 'mysql' ? 'bg-sky-50 dark:bg-sky-950/60 text-sky-900 dark:text-sky-200 border border-sky-200 dark:border-sky-800/80' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/60 border border-transparent'">
+                                    <div class="flex items-center gap-3 min-w-0">
+                                        <div class="w-8 h-8 rounded-xl bg-sky-100 dark:bg-sky-900/50 text-sky-600 dark:text-sky-400 flex items-center justify-center shrink-0 shadow-sm">
+                                            <i class="ph-bold ph-hard-drives text-base"></i>
+                                        </div>
+                                        <div>
+                                            <div class="text-sm font-bold leading-tight" :class="newProfile.engine === 'mysql' ? 'text-sky-900 dark:text-sky-100' : 'text-slate-800 dark:text-slate-200'">MySQL</div>
+                                            <div class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Port 3306 · Standard relational database</div>
+                                        </div>
+                                    </div>
+                                    <i v-if="newProfile.engine === 'mysql'" class="ph-bold ph-check text-sky-600 dark:text-sky-400 text-lg"></i>
+                                </button>
+
+                                <button type="button"
+                                        @click="setEngine('postgresql')"
+                                        class="w-full p-2.5 rounded-xl flex items-center justify-between transition-all text-left group"
+                                        :class="newProfile.engine === 'postgresql' ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-900 dark:text-indigo-200 border border-indigo-200 dark:border-indigo-800/80' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/60 border border-transparent'">
+                                    <div class="flex items-center gap-3 min-w-0">
+                                        <div class="w-8 h-8 rounded-xl bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 shadow-sm">
+                                            <i class="ph-bold ph-database text-base"></i>
+                                        </div>
+                                        <div>
+                                            <div class="text-sm font-bold leading-tight" :class="newProfile.engine === 'postgresql' ? 'text-indigo-900 dark:text-indigo-100' : 'text-slate-800 dark:text-slate-200'">PostgreSQL</div>
+                                            <div class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Port 5432 · Schema-capable SQL engine</div>
+                                        </div>
+                                    </div>
+                                    <i v-if="newProfile.engine === 'postgresql'" class="ph-bold ph-check text-indigo-600 dark:text-indigo-400 text-lg"></i>
+                                </button>
+
+                            </div>
+                        </div>
+
+                        <div class="col-span-2">
+                            <label class="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1.5 block">Profile Name</label>
+                            <input v-model="newProfile.name" placeholder="e.g. Production or Localhost" class="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl text-sm focus:outline-none focus:border-brand-500 placeholder:text-slate-400 shadow-sm" />
+                        </div>
+
+                        <div>
+                            <label class="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1.5 block">Host</label>
+                            <input v-model="newProfile.host" placeholder="127.0.0.1" class="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl text-sm focus:outline-none focus:border-brand-500 placeholder:text-slate-400 shadow-sm" />
+                        </div>
+
+                        <div>
+                            <label class="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1.5 block">Port</label>
+                            <input v-model="newProfile.port" type="number" placeholder="3306" class="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl text-sm focus:outline-none focus:border-brand-500 placeholder:text-slate-400 shadow-sm" />
+                        </div>
+
+                        <div v-if="newProfile.engine === 'postgresql'" class="col-span-2">
+                            <label class="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1.5 block">Schema</label>
+                            <input v-model="newProfile.schema" placeholder="public" class="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl text-sm focus:outline-none focus:border-brand-500 placeholder:text-slate-400 shadow-sm" />
+                        </div>
+
+                        <div>
+                            <label class="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1.5 block">User</label>
+                            <input v-model="newProfile.user" placeholder="root" class="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl text-sm focus:outline-none focus:border-brand-500 placeholder:text-slate-400 shadow-sm" />
+                        </div>
+
+                        <div>
+                            <label class="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1.5 block">Password</label>
+                            <input v-model="newProfile.password" type="password" placeholder="••••••••" class="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl text-sm focus:outline-none focus:border-brand-500 placeholder:text-slate-400 shadow-sm" />
+                        </div>
+
+                        <button @click="isEditingProfile ? updateProfile() : createProfile()" 
+                                :disabled="!newProfile.name || !newProfile.host" 
+                                class="col-span-2 mt-2 py-3 bg-brand-600 text-white rounded-xl font-bold hover:bg-brand-700 shadow-lg shadow-brand-500/20 disabled:opacity-50 text-sm flex items-center justify-center gap-2 transition-all cursor-pointer">
+                            <i class="ph-bold" :class="isEditingProfile ? 'ph-check' : 'ph-plus'"></i>
+                            {% raw %}{{ isEditingProfile ? 'Save Changes' : 'Create Profile' }}{% endraw %}
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>

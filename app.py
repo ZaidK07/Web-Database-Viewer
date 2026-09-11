@@ -476,6 +476,7 @@ def delete_profile(name):
 
 
 @app.route('/')
+@app.route('/profiles')
 def profile_selector():
     return render_template('profile_selector.html')
 

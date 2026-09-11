@@ -36,7 +36,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="h-full flex bg-slate-50 dark:bg-slate-950 relative overflow-hidden transition-colors duration-300">
+<div class="h-full flex bg-[#eaedf2] dark:bg-slate-950 relative overflow-hidden transition-colors duration-300">
 
     <!-- Command+J Database Objects Modal -->
     <div v-if="showCmdJ" class="fixed inset-0 z-[60] flex items-start justify-center pt-[15vh]">
@@ -90,17 +90,17 @@
             </div>
             
             <div v-else class="flex flex-col gap-1">
-                <div class="px-3 pt-1 pb-2 flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                <div class="px-3 pt-1 pb-2 flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">
                     <span>Tables</span>
-                    <span class="rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5">{% raw %}{{ tables.length }}{% endraw %}</span>
+                    <span class="rounded-md bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-1.5 py-0.5 border border-slate-300/60 dark:border-slate-700">{% raw %}{{ tables.length }}{% endraw %}</span>
                 </div>
-                <div v-for="table in tables" :key="table" class="rounded-lg border border-transparent transition-all" :class="activeTable === table ? 'bg-brand-50 dark:bg-brand-900/30 border-brand-200 dark:border-brand-800' : 'hover:bg-slate-50 dark:hover:bg-slate-800 border-transparent'">
+                <div v-for="table in tables" :key="table" class="rounded-xl transition-all" :class="activeTable === table ? 'bg-brand-100/90 dark:bg-brand-950/80 shadow-sm' : 'hover:bg-slate-100 dark:hover:bg-slate-800/60'">
                     
                     <!-- Table Main Row -->
                     <div class="flex items-center justify-between px-3 py-2 cursor-pointer group" @click="selectTable(table)">
-                        <div class="flex items-center gap-2 flex-1 min-w-0">
-                            <i class="ph-duotone ph-table text-lg" :class="activeTable === table ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400 dark:text-slate-500 group-hover:text-brand-500 dark:group-hover:text-brand-400'"></i>
-                            <span class="font-medium text-sm truncate" :class="activeTable === table ? 'text-brand-700 dark:text-brand-400' : 'text-slate-700 dark:text-slate-300'">{% raw %}{{ table }}{% endraw %}</span>
+                        <div class="flex items-center gap-2.5 flex-1 min-w-0">
+                            <i class="ph-duotone ph-table text-lg" :class="activeTable === table ? 'text-brand-600 dark:text-brand-400 font-bold' : 'text-slate-500 dark:text-slate-400 group-hover:text-brand-500 dark:group-hover:text-brand-400'"></i>
+                            <span class="text-sm truncate" :class="activeTable === table ? 'text-brand-950 dark:text-white font-bold' : 'text-slate-700 dark:text-slate-300 font-medium'">{% raw %}{{ table }}{% endraw %}</span>
                         </div>
                         <button @click.stop="toggleSchema(table)" class="p-1 rounded text-slate-400 dark:text-slate-500 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-white dark:hover:bg-slate-800 transition-colors" title="Toggle Schema Details">
                             <i class="ph-bold" :class="expandedSchema === table ? 'ph-caret-up' : 'ph-caret-down'"></i>
@@ -108,7 +108,7 @@
                     </div>
 
                     <!-- Schema Expanded Details -->
-                    <div v-show="expandedSchema === table" class="px-3 pb-3 pt-1 border-t border-brand-100/50 dark:border-brand-900/50 bg-white/50 dark:bg-slate-900/30 rounded-b-lg">
+                    <div v-show="expandedSchema === table" class="px-3 pb-3 pt-1 border-t border-brand-200/60 dark:border-brand-900/50 bg-white/70 dark:bg-slate-900/50 rounded-b-xl">
                         <div class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 flex items-center justify-between">
                             Columns
                             <span class="text-[10px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-slate-400 dark:text-slate-500">{% raw %}{{ schema[table]?.columns.length || 0 }}{% endraw %}</span>
@@ -127,17 +127,17 @@
                     
                 </div>
 
-                <button v-if="views.length" @click="showViews = !showViews" type="button" class="mt-3 flex items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800">
+                <button v-if="views.length" @click="showViews = !showViews" type="button" class="mt-3 flex items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
                     <span class="flex items-center gap-2"><i class="ph-duotone ph-eye text-base"></i> Views</span>
-                    <span class="flex items-center gap-2"><span class="rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5">{% raw %}{{ views.length }}{% endraw %}</span><i class="ph-bold" :class="showViews ? 'ph-caret-up' : 'ph-caret-down'"></i></span>
+                    <span class="flex items-center gap-2"><span class="rounded bg-slate-200/80 dark:bg-slate-800 px-1.5 py-0.5 text-slate-700 dark:text-slate-300 border border-slate-300/60 dark:border-slate-700">{% raw %}{{ views.length }}{% endraw %}</span><i class="ph-bold" :class="showViews ? 'ph-caret-up' : 'ph-caret-down'"></i></span>
                 </button>
                 <div v-if="showViews" class="flex flex-col gap-1">
-                    <div v-for="view in views" :key="view" class="rounded-lg border border-transparent transition-all" :class="activeTable === view ? 'bg-violet-50 dark:bg-violet-900/20 border-violet-200 dark:border-violet-800' : 'hover:bg-slate-50 dark:hover:bg-slate-800 border-transparent'">
+                    <div v-for="view in views" :key="view" class="rounded-xl transition-all" :class="activeTable === view ? 'bg-violet-100/90 dark:bg-violet-950/80 shadow-sm' : 'hover:bg-slate-100 dark:hover:bg-slate-800/60'">
                         <div class="flex items-center justify-between px-3 py-2 cursor-pointer group" @click="selectTable(view)">
-                            <div class="flex items-center gap-2 flex-1 min-w-0">
-                                <i class="ph-duotone ph-eye text-lg" :class="activeTable === view ? 'text-violet-600 dark:text-violet-400' : 'text-slate-400 dark:text-slate-500 group-hover:text-violet-500 dark:group-hover:text-violet-400'"></i>
-                                <span class="font-medium text-sm truncate" :class="activeTable === view ? 'text-violet-700 dark:text-violet-400' : 'text-slate-700 dark:text-slate-300'">{% raw %}{{ view }}{% endraw %}</span>
-                                <span class="text-[9px] font-bold uppercase tracking-wider text-violet-500">View</span>
+                            <div class="flex items-center gap-2.5 flex-1 min-w-0">
+                                <i class="ph-duotone ph-eye text-lg" :class="activeTable === view ? 'text-violet-600 dark:text-violet-400 font-bold' : 'text-slate-500 dark:text-slate-400 group-hover:text-violet-500 dark:group-hover:text-violet-400'"></i>
+                                <span class="text-sm truncate" :class="activeTable === view ? 'text-violet-950 dark:text-white font-bold' : 'text-slate-700 dark:text-slate-300 font-medium'">{% raw %}{{ view }}{% endraw %}</span>
+                                <span class="text-[9px] font-bold uppercase tracking-wider text-violet-600 dark:text-violet-400 bg-violet-200/60 dark:bg-violet-900/40 px-1 py-0.5 rounded">View</span>
                             </div>
                             <button @click.stop="toggleSchema(view)" class="p-1 rounded text-slate-400 dark:text-slate-500 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-white dark:hover:bg-slate-800 transition-colors" title="Toggle Schema Details">
                                 <i class="ph-bold" :class="expandedSchema === view ? 'ph-caret-up' : 'ph-caret-down'"></i>
@@ -189,28 +189,28 @@
                 </div>
                 
                 <div class="flex items-center gap-3">
-                    <button @click="openAddRowModal" class="px-3 py-1.5 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition-colors shadow-sm flex items-center gap-1.5">
+                    <button @click="openAddRowModal" class="h-9 px-3.5 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition-colors shadow-sm flex items-center gap-1.5">
                         <i class="ph-bold ph-plus"></i> Add Row
                     </button>
-                    <button @click="exportCSV" class="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-sm flex items-center gap-1.5">
+                    <button @click="exportCSV" class="h-9 px-3.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-sm flex items-center gap-1.5">
                         <i class="ph-bold ph-file-csv"></i> Export CSV
                     </button>
-                    <div class="w-px h-6 bg-slate-200 dark:bg-slate-700 mx-1"></div>
-                    <button @click="loadData(currentPage)" class="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-slate-200 transition-colors shadow-sm" title="Reload Data">
-                        <i class="ph-bold ph-arrow-counter-clockwise" :class="{'animate-spin': dataLoading}"></i>
+                    <div class="w-px h-5 bg-slate-300 dark:bg-slate-700 mx-0.5"></div>
+                    <button @click="loadData(currentPage)" class="h-9 w-9 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-slate-200 transition-colors shadow-sm flex items-center justify-center shrink-0" title="Reload Data">
+                        <i class="ph-bold ph-arrow-counter-clockwise text-base" :class="{'animate-spin': dataLoading}"></i>
                     </button>
                     <div class="relative">
                         <i class="ph ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
-                        <input v-model="searchQuery" @keyup.enter="loadData(1)" type="text" placeholder="Search rows..." class="pl-9 pr-4 py-1.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 w-64 shadow-sm placeholder:text-slate-400 dark:placeholder:text-slate-500" />
+                        <input v-model="searchQuery" @keyup.enter="loadData(1)" type="text" placeholder="Search rows..." class="h-9 pl-9 pr-4 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 w-64 shadow-sm placeholder:text-slate-400 dark:placeholder:text-slate-500" />
                     </div>
-                    <button @click="loadData(1)" class="px-3 py-1.5 rounded-lg bg-slate-800 dark:bg-slate-100 dark:text-slate-900 text-white text-sm font-medium hover:bg-slate-900 dark:hover:bg-white transition-colors shadow-sm">
+                    <button @click="loadData(1)" class="h-9 px-3.5 rounded-lg bg-slate-800 dark:bg-slate-100 dark:text-slate-900 text-white text-sm font-medium hover:bg-slate-900 dark:hover:bg-white transition-colors shadow-sm flex items-center">
                         Search
                     </button>
                 </div>
             </div>
 
             <!-- Active Filter Indicator -->
-            <div v-if="activeFilter" class="flex items-center gap-2 px-6 py-2 bg-brand-50 dark:bg-brand-900/20 border-b border-slate-100 dark:border-slate-800 text-xs text-brand-700 dark:text-brand-400">
+            <div v-if="activeFilter" class="flex items-center gap-2 px-6 py-2 bg-brand-50 dark:bg-brand-900/20 border-b border-slate-200 dark:border-slate-800 text-xs text-brand-700 dark:text-brand-400">
                 <i class="ph ph-funnel"></i>
                 <span>Filtered by <strong>{% raw %}{{ activeFilter.column }}{% endraw %}</strong> = <strong>{% raw %}{{ activeFilter.value }}{% endraw %}</strong></span>
                 <button @click="clearFilter" class="ml-auto text-brand-600 dark:text-brand-400 hover:text-brand-800 font-bold flex items-center gap-1">
@@ -229,12 +229,12 @@
                 </div>
                 
                 <table v-if="schema[activeTable]" class="data-table text-sm text-left">
-                    <thead class="bg-slate-50 dark:bg-slate-800 sticky top-0 z-10 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+                    <thead class="bg-slate-100/80 dark:bg-slate-800 sticky top-0 z-10 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
                         <tr>
-                            <th class="px-4 py-3 font-semibold text-slate-600 dark:text-slate-400 border-b border-r border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 w-16 text-center">
+                            <th class="px-4 py-3 font-semibold text-slate-700 dark:text-slate-300 border-b-2 border-r border-slate-300 dark:border-slate-700 bg-slate-100/90 dark:bg-slate-800 w-16 text-center">
                                 Actions
                             </th>
-                            <th v-for="col in schema[activeTable].columns" :key="col.Field" class="px-4 py-3 font-semibold text-slate-600 dark:text-slate-400 border-b border-r border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 whitespace-nowrap relative group/th last:border-r-0" :style="{ width: (colWidths[col.Field] || 200) + 'px' }">
+                            <th v-for="col in schema[activeTable].columns" :key="col.Field" class="px-4 py-3 font-semibold text-slate-700 dark:text-slate-300 border-b-2 border-r border-slate-300 dark:border-slate-700 bg-slate-100/90 dark:bg-slate-800 whitespace-nowrap relative group/th last:border-r-0" :style="{ width: (colWidths[col.Field] || 200) + 'px' }">
                                 <!-- Col Resizer -->
                                 <div @mousedown="startColResize($event, col.Field)" class="absolute top-0 right-0 w-2 h-full cursor-col-resize z-20 group/resizer hover:bg-brand-500/10 active:bg-brand-500/30 transition-all">
                                     <div class="absolute right-0 top-0 w-px h-full bg-slate-300 dark:bg-slate-600 group-hover/resizer:bg-brand-500 group-hover/resizer:w-0.5 transition-all"></div>
@@ -259,24 +259,24 @@
                             </th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+                    <tbody class="divide-y divide-slate-200 dark:divide-slate-800">
                         <tr v-if="rows.length === 0 && !dataLoading">
                             <td :colspan="schema[activeTable].columns.length + 1" class="px-4 py-12 text-center text-slate-500">
                                 <i class="ph-duotone ph-magnifying-glass text-3xl mb-2 text-slate-300 dark:text-slate-700"></i>
                                 <p>No data found.</p>
                             </td>
                         </tr>
-                        <tr v-for="(row, index) in rows" :key="index" class="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors group">
+                        <tr v-for="(row, index) in rows" :key="index" class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors group">
                             <!-- Actions Column -->
-                            <td class="px-4 py-2 border-r border-slate-100/50 dark:border-slate-800 text-center">
-                                <button @click="deleteRow(index)" class="text-slate-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 transition-colors" title="Delete Row">
+                            <td class="px-4 py-2 border-r border-slate-200 dark:border-slate-800 text-center">
+                                <button @click="deleteRow(index)" class="text-slate-400 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 transition-colors" title="Delete Row">
                                     <i class="ph-bold ph-trash"></i>
                                 </button>
                             </td>
                             <!-- Data Columns -->
                             <td v-for="col in schema[activeTable].columns" :key="col.Field" 
                                 @click="handleCellClick($event, row[col.Field], index, col.Field)"
-                                class="px-4 py-2 border-r border-slate-100/50 dark:border-slate-800 last:border-r-0 relative group/cell cursor-pointer">
+                                class="px-4 py-2 border-r border-slate-200 dark:border-slate-800 last:border-r-0 relative group/cell cursor-pointer">
                                 
                                 <!-- Edit Mode -->
                                 <div v-if="editingCell.row === index && editingCell.col === col.Field" class="flex items-center gap-1">
@@ -398,32 +398,60 @@
             const baseSetup = window.baseAppSetup();
             baseSetup.sqlDb.value = DBNAME;
             
-            // Resizable Sidebar State
-            const sidebarWidth = ref(320); // Default 80 tailwind units = 320px
+            // Resizable Sidebar State with robust localStorage persistence
+            const getSavedSidebarWidth = () => {
+                try {
+                    const saved = localStorage.getItem('db_viewer_sidebar_width');
+                    if (saved !== null) {
+                        const parsed = parseInt(saved, 10);
+                        if (!isNaN(parsed) && parsed >= 150) {
+                            return parsed;
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error reading sidebar width from localStorage', e);
+                }
+                return 320;
+            };
+
+            const sidebarWidth = ref(getSavedSidebarWidth());
             const isResizing = ref(false);
 
             const startResize = (e) => {
                 isResizing.value = true;
-                document.addEventListener('mousemove', handleResize);
-                document.addEventListener('mouseup', stopResize);
+                window.addEventListener('mousemove', handleResize);
+                window.addEventListener('mouseup', stopResize);
                 document.body.style.cursor = 'col-resize';
-                document.body.style.userSelect = 'none'; // Prevent text selection while dragging
+                document.body.style.userSelect = 'none';
             };
 
             const handleResize = (e) => {
                 if (!isResizing.value) return;
-                // Min width 200px, Max width 600px
-                const newWidth = Math.max(200, Math.min(600, e.clientX));
+                const newWidth = Math.max(160, Math.min(window.innerWidth - 100, Math.round(e.clientX)));
                 sidebarWidth.value = newWidth;
+                try {
+                    localStorage.setItem('db_viewer_sidebar_width', String(newWidth));
+                } catch (err) {}
             };
 
             const stopResize = () => {
+                if (isResizing.value) {
+                    try {
+                        localStorage.setItem('db_viewer_sidebar_width', String(sidebarWidth.value));
+                    } catch (err) {}
+                }
                 isResizing.value = false;
-                document.removeEventListener('mousemove', handleResize);
-                document.removeEventListener('mouseup', stopResize);
+                window.removeEventListener('mousemove', handleResize);
+                window.removeEventListener('mouseup', stopResize);
                 document.body.style.cursor = '';
                 document.body.style.userSelect = '';
             };
+
+            Vue.watch(sidebarWidth, (val) => {
+                try {
+                    localStorage.setItem('db_viewer_sidebar_width', String(val));
+                } catch (err) {}
+            });
 
             // Sidebar State
             const schemaLoading = ref(true);
@@ -716,9 +744,10 @@
                         views.value = data.views || [];
                         schema.value = data.schema;
                         
-                        // Auto-size sidebar based on longest table name
+                        // Auto-size sidebar based on longest table name ONLY if user hasn't set/saved a preference
                         const visibleObjects = [...tables.value, ...views.value];
-                        if(visibleObjects.length > 0) {
+                        const hasSavedWidth = localStorage.getItem('db_viewer_sidebar_width') !== null;
+                        if (!hasSavedWidth && visibleObjects.length > 0) {
                             let maxLen = 0;
                             visibleObjects.forEach(t => {
                                 if(t.length > maxLen) maxLen = t.length;
