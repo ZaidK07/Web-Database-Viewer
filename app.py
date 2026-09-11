@@ -56,4 +56,4 @@ app.register_blueprint(sqlite_bp)
 
 
 if __name__ == '__main__':
-    app.run(debug=True, port=10992)
+    app.run(debug=False, port=10992)

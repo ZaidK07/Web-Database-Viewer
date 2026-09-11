@@ -4,6 +4,8 @@ __pycache__/
 db_list.json
 plan.md
 reference_frontend.html
+profiles.db*
+profiles.json
 .DS_Store
-profiles*
+*.db
 uploads/
