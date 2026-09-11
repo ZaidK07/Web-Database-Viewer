@@ -10,8 +10,17 @@
         display: block;
         position: relative;
     }
+    @keyframes copy-popup {
+        0% { transform: translateY(0); opacity: 0; }
+        20% { transform: translateY(-10px); opacity: 1; }
+        80% { transform: translateY(-10px); opacity: 1; }
+        100% { transform: translateY(-20px); opacity: 0; }
+    }
+    .copy-toast {
+        animation: copy-popup 1.5s ease-out forwards;
+    }
     .data-table th, .data-table td {
-        max-width: 600px;
+        max-width: 800px;
     }
     .sidebar-scroll::-webkit-scrollbar {
         width: 4px;
@@ -323,91 +332,110 @@
         </div>
 
         <!-- Data Grid View when table selected -->
-        <div v-else class="flex-1 flex flex-col min-w-0 h-full overflow-hidden bg-white dark:bg-slate-900">
-            <!-- Table Toolbar -->
-            <div class="px-5 py-3 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 bg-slate-50/50 dark:bg-slate-900/50 shrink-0">
-                <div class="flex items-center gap-3 min-w-0">
-                    <h3 class="text-base font-bold text-slate-800 dark:text-slate-100 truncate flex items-center gap-2">
-                        <i class="ph-duotone ph-table text-amber-500"></i>
-                        <span>{% raw %}{{ activeTable }}{% endraw %}</span>
-                    </h3>
-                    <span class="text-xs bg-slate-200/80 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-full font-semibold shrink-0">
-                        {% raw %}{{ totalRows }} rows{% endraw %}
-                    </span>
+        <div v-else class="h-full flex flex-col w-full bg-white dark:bg-slate-900 shadow-sm border-l border-slate-200 dark:border-slate-800 transition-colors duration-300">
+            <!-- Table Header Toolbar -->
+            <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900 shrink-0">
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h2 class="text-xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">{% raw %}{{ activeTable }}{% endraw %}</h2>
+                        <span class="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider"
+                              :class="views.includes(activeTable) ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' : 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400'">
+                            {% raw %}{{ views.includes(activeTable) ? 'View' : 'Table' }}{% endraw %}
+                        </span>
+                    </div>
                 </div>
 
-                <div class="flex items-center gap-2">
-                    <!-- Full-text search -->
-                    <div class="relative">
-                        <i class="ph-bold ph-magnifying-glass text-slate-400 absolute left-2.5 top-2 text-xs"></i>
-                        <input v-model="searchQuery" @keyup.enter="fetchTableData" type="text" placeholder="Search rows..." class="pl-7 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500 w-48" />
-                    </div>
-
-                    <!-- Insert Row Button -->
-                    <button @click="openInsertModal" class="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-colors">
-                        <i class="ph-bold ph-plus"></i> Insert Row
+                <div class="flex items-center gap-3">
+                    <button @click="openInsertModal" class="h-9 px-3.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium transition-colors shadow-sm flex items-center gap-1.5">
+                        <i class="ph-bold ph-plus"></i> Add Row
                     </button>
-
-                    <!-- Export CSV -->
-                    <a :href="'/api/sqlite/' + activeFile.id + '/table/' + encodeURIComponent(activeTable) + '/export/csv'" class="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 transition-colors">
-                        <i class="ph-bold ph-file-csv text-amber-500"></i> Export CSV
+                    <a :href="'/api/sqlite/' + activeFile.id + '/table/' + encodeURIComponent(activeTable) + '/export/csv'" class="h-9 px-3.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-sm flex items-center gap-1.5">
+                        <i class="ph-bold ph-file-csv"></i> Export CSV
                     </a>
-
-                    <!-- Refresh Button -->
-                    <button @click="fetchTableData" :disabled="loadingData" class="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors" title="Reload Rows">
-                        <i class="ph-bold ph-arrows-clockwise text-sm" :class="{ 'animate-spin': loadingData }"></i>
+                    <div class="w-px h-5 bg-slate-300 dark:bg-slate-700 mx-0.5"></div>
+                    <button @click="fetchTableData" class="h-9 w-9 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-slate-200 transition-colors shadow-sm flex items-center justify-center shrink-0" title="Reload Data">
+                        <i class="ph-bold ph-arrow-counter-clockwise text-base" :class="{'animate-spin': loadingData}"></i>
+                    </button>
+                    <div class="relative">
+                        <i class="ph ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                        <input v-model="searchQuery" @keyup.enter="fetchTableData" type="text" placeholder="Search rows..." class="h-9 pl-9 pr-4 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-slate-200 rounded-lg text-sm focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 w-64 shadow-sm placeholder:text-slate-400 dark:placeholder:text-slate-500" />
+                    </div>
+                    <button @click="fetchTableData" class="h-9 px-3.5 rounded-lg bg-slate-800 dark:bg-slate-100 dark:text-slate-900 text-white text-sm font-medium hover:bg-slate-900 dark:hover:bg-white transition-colors shadow-sm flex items-center">
+                        Search
                     </button>
                 </div>
             </div>
 
-            <!-- Table Rows Area -->
-            <div class="flex-1 overflow-auto relative">
-                <div v-if="loadingData" class="absolute inset-0 bg-white/60 dark:bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-10">
-                    <i class="ph ph-spinner animate-spin text-3xl text-amber-500"></i>
+            <!-- Table Container (Horizontal & Vertical Scroll) -->
+            <div class="flex-1 overflow-auto bg-white dark:bg-slate-900 relative">
+                <div v-if="loadingData" class="absolute inset-0 bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm z-10 flex items-center justify-center">
+                    <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-700 p-6 flex flex-col items-center">
+                        <i class="ph ph-spinner animate-spin text-4xl text-amber-500 mb-2"></i>
+                        <span class="text-sm font-medium text-slate-600 dark:text-slate-400">Loading data...</span>
+                    </div>
                 </div>
 
                 <div v-if="tableError" class="p-4 m-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-xs rounded-xl border border-red-200 dark:border-red-900/50">
                     {% raw %}{{ tableError }}{% endraw %}
                 </div>
 
-                <table v-else-if="rows.length > 0" class="data-table text-left border-collapse">
-                    <thead class="sticky top-0 bg-slate-100 dark:bg-slate-800 z-10 shadow-sm border-b border-slate-200 dark:border-slate-700">
+                <table v-else-if="rows.length > 0" class="data-table text-sm text-left">
+                    <thead class="bg-slate-100/80 dark:bg-slate-800 sticky top-0 z-10 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
                         <tr>
-                            <!-- Actions Column -->
-                            <th class="w-16 px-3 py-2 text-center text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Actions</th>
-                            
-                            <!-- Column Headers with Sorting -->
+                            <th class="px-4 py-3 font-semibold text-slate-700 dark:text-slate-300 border-b-2 border-r border-slate-300 dark:border-slate-700 bg-slate-100/90 dark:bg-slate-800 w-16 text-center">
+                                Actions
+                            </th>
                             <th v-for="col in currentTableColumns" :key="col.Field"
-                                @click="sortBy(col.Field)"
-                                class="px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 border-l border-slate-200 dark:border-slate-700 cursor-pointer select-none hover:bg-slate-200/50 dark:hover:bg-slate-700/50 transition-colors">
-                                <div class="flex items-center justify-between gap-1.5">
-                                    <div class="flex items-center gap-1 min-w-0">
-                                        <i v-if="currentPrimaryKeys.includes(col.Field)" class="ph-fill ph-key text-yellow-500 text-[10px] shrink-0" title="Primary Key"></i>
-                                        <span class="truncate font-mono">{% raw %}{{ col.Field }}{% endraw %}</span>
+                                class="px-4 py-3 font-semibold text-slate-700 dark:text-slate-300 border-b-2 border-r border-slate-300 dark:border-slate-700 bg-slate-100/90 dark:bg-slate-800 whitespace-nowrap relative group/th last:border-r-0"
+                                :style="{ width: (colWidths[col.Field] || 200) + 'px' }">
+                                <!-- Col Resizer -->
+                                <div @mousedown="startColResize($event, col.Field)" class="absolute top-0 right-0 w-2 h-full cursor-col-resize z-20 group/resizer hover:bg-amber-500/10 active:bg-amber-500/30 transition-all">
+                                    <div class="absolute right-0 top-0 w-px h-full bg-slate-300 dark:bg-slate-600 group-hover/resizer:bg-amber-500 group-hover/resizer:w-0.5 transition-all"></div>
+                                </div>
+                                <div @click="sortBy(col.Field)" class="flex items-center gap-1 cursor-pointer select-none group/sort">
+                                    {% raw %}{{ col.Field }}{% endraw %}
+                                    <i v-if="currentPrimaryKeys.includes(col.Field)" class="ph-fill ph-key text-yellow-500 text-xs" title="Primary Key"></i>
+                                    <div class="flex ml-auto pl-2">
+                                        <!-- Default Hover State -->
+                                        <div v-if="sortCol !== col.Field" class="flex flex-col opacity-0 group-hover/sort:opacity-30 transition-opacity text-slate-400">
+                                            <i class="ph-fill ph-caret-up text-[10px] -mb-1"></i>
+                                            <i class="ph-fill ph-caret-down text-[10px]"></i>
+                                        </div>
+                                        <!-- Active Sorted State -->
+                                        <div v-else class="flex items-center text-amber-600 dark:text-amber-400 font-bold bg-amber-50 dark:bg-amber-950/50 px-1.5 py-0.5 rounded shadow-sm border border-amber-200 dark:border-amber-800/60">
+                                            <i v-if="sortDir === 'ASC'" class="ph-bold ph-arrow-up text-xs"></i>
+                                            <i v-else class="ph-bold ph-arrow-down text-xs"></i>
+                                            <span class="text-[9px] uppercase tracking-widest ml-1 opacity-80" v-text="sortDir"></span>
+                                        </div>
                                     </div>
-                                    <i v-if="sortCol === col.Field" class="ph-bold shrink-0 text-amber-500 text-[10px]" :class="sortDir === 'ASC' ? 'ph-caret-up' : 'ph-caret-down'"></i>
                                 </div>
                             </th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-slate-100 dark:divide-slate-800 text-xs font-mono">
-                        <tr v-for="(row, idx) in rows" :key="idx" class="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group">
-                            <!-- Row Action Buttons (Edit / Delete) -->
-                            <td class="px-2 py-1.5 text-center shrink-0">
-                                <div class="flex items-center justify-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
-                                    <button @click="openEditModal(row)" class="p-1 rounded text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20" title="Edit row">
-                                        <i class="ph-bold ph-pencil-simple text-xs"></i>
-                                    </button>
-                                    <button @click="confirmDeleteRow(row)" class="p-1 rounded text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20" title="Delete row">
-                                        <i class="ph-bold ph-trash text-xs"></i>
-                                    </button>
-                                </div>
+                    <tbody class="divide-y divide-slate-200 dark:divide-slate-800">
+                        <tr v-for="(row, index) in rows" :key="index" class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors group">
+                            <!-- Actions Column -->
+                            <td class="px-4 py-2 border-r border-slate-200 dark:border-slate-800 text-center">
+                                <button @click="confirmDeleteRow(row)" class="text-slate-400 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 transition-colors" title="Delete Row">
+                                    <i class="ph-bold ph-trash"></i>
+                                </button>
                             </td>
-
-                            <!-- Row Cells -->
-                            <td v-for="col in currentTableColumns" :key="col.Field" class="px-3 py-1.5 border-l border-slate-100 dark:border-slate-800/80 truncate text-slate-800 dark:text-slate-200">
-                                <span v-if="row[col.Field] === null" class="italic text-slate-400 text-[11px]">NULL</span>
-                                <span v-else class="cell-content" :title="String(row[col.Field])">{% raw %}{{ row[col.Field] }}{% endraw %}</span>
+                            <!-- Data Columns -->
+                            <td v-for="col in currentTableColumns" :key="col.Field"
+                                @click="handleCellClick($event, row[col.Field], index, col.Field)"
+                                class="px-4 py-2 border-r border-slate-200 dark:border-slate-800 last:border-r-0 relative group/cell cursor-pointer">
+                                
+                                <!-- Edit Mode -->
+                                <div v-if="editingCell.row === index && editingCell.col === col.Field" class="flex items-center gap-1">
+                                    <input v-model="editDraftValue" @keyup.enter="saveCell()" @keyup.esc="cancelEdit()" type="text" class="w-full px-2 py-1 border border-amber-400 rounded shadow-inner text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/50 bg-white dark:bg-slate-800 dark:text-slate-100" autofocus v-focus />
+                                    <button @click.stop="saveCell()" class="text-green-600 dark:text-green-400 hover:text-green-700 p-1" title="Save"><i class="ph-bold ph-check"></i></button>
+                                    <button @click.stop="cancelEdit()" class="text-red-500 dark:text-red-400 hover:text-red-600 p-1" title="Cancel"><i class="ph-bold ph-x"></i></button>
+                                </div>
+                                <!-- View Mode -->
+                                <div v-else @dblclick="startCellEdit(index, col.Field, row[col.Field])" class="cell-content -mx-2 px-2 py-1 rounded transition-colors dark:text-slate-300" :class="{'cursor-not-allowed': currentPrimaryKeys.includes(col.Field) || !currentPrimaryKeys.length}" :title="row[col.Field]">
+                                    <span v-if="row[col.Field] === null" class="text-slate-300 dark:text-slate-600 italic font-mono text-xs">NULL</span>
+                                    <span v-else>{% raw %}{{ row[col.Field] }}{% endraw %}</span>
+                                </div>
                             </td>
                         </tr>
                     </tbody>
@@ -418,27 +446,36 @@
                 </div>
             </div>
 
-            <!-- Table Pagination Bar -->
-            <div class="px-5 py-2.5 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 shrink-0">
-                <div class="flex items-center gap-2">
-                    <span>Showing</span>
-                    <select v-model="pageLimit" @change="fetchTableData" class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-2 py-0.5 text-xs focus:outline-none">
-                        <option :value="50">50</option>
-                        <option :value="100">100</option>
-                        <option :value="250">250</option>
-                        <option :value="500">500</option>
-                    </select>
-                    <span>per page · Total {% raw %}{{ totalRows }}{% endraw %}</span>
+            <!-- Footer Pagination -->
+            <div class="px-6 py-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex items-center justify-between shrink-0 shadow-[0_-1px_2px_rgba(0,0,0,0.02)]">
+                <div class="text-sm text-slate-500 dark:text-slate-400">
+                    Showing <span class="font-medium text-slate-700 dark:text-slate-200">{% raw %}{{ rows.length > 0 ? (currentPage - 1) * pageLimit + 1 : 0 }}{% endraw %}</span> to <span class="font-medium text-slate-700 dark:text-slate-200">{% raw %}{{ Math.min(currentPage * pageLimit, totalRows) }}{% endraw %}</span> of <span class="font-medium text-slate-700 dark:text-slate-200">{% raw %}{{ totalRows }}{% endraw %}</span> results
                 </div>
-
-                <div class="flex items-center gap-1">
-                    <button @click="prevPage" :disabled="currentPage <= 1" class="px-2 py-1 rounded border border-slate-200 dark:border-slate-700 disabled:opacity-40 hover:bg-white dark:hover:bg-slate-800">
-                        <i class="ph-bold ph-caret-left"></i>
-                    </button>
-                    <span class="px-2 font-medium">Page {% raw %}{{ currentPage }} of {{ totalPages || 1 }}{% endraw %}</span>
-                    <button @click="nextPage" :disabled="currentPage >= totalPages" class="px-2 py-1 rounded border border-slate-200 dark:border-slate-700 disabled:opacity-40 hover:bg-white dark:hover:bg-slate-800">
-                        <i class="ph-bold ph-caret-right"></i>
-                    </button>
+                
+                <div class="flex items-center gap-3">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs text-slate-500 dark:text-slate-400 uppercase font-semibold tracking-wider">Per Page</span>
+                        <select v-model="pageLimit" @change="fetchTableData" class="border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-sm focus:outline-none focus:border-amber-500 bg-white dark:bg-slate-800 dark:text-slate-200 shadow-sm">
+                            <option :value="50">50</option>
+                            <option :value="100">100</option>
+                            <option :value="250">250</option>
+                            <option :value="500">500</option>
+                        </select>
+                    </div>
+                    
+                    <div class="w-px h-6 bg-slate-200 dark:bg-slate-700 mx-1"></div>
+                    
+                    <div class="flex items-center gap-1">
+                        <button @click="prevPage" :disabled="currentPage <= 1 || loadingData" class="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-amber-600 dark:hover:text-amber-400 text-slate-600 dark:text-slate-400 disabled:opacity-50 disabled:hover:bg-white dark:disabled:hover:bg-slate-800 disabled:hover:text-slate-600 disabled:cursor-not-allowed transition-colors shadow-sm">
+                            <i class="ph-bold ph-caret-left"></i>
+                        </button>
+                        <span class="text-sm font-medium px-3 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-sm dark:text-slate-200">
+                            {% raw %}{{ currentPage }}{% endraw %} / {% raw %}{{ totalPages || 1 }}{% endraw %}
+                        </span>
+                        <button @click="nextPage" :disabled="currentPage >= totalPages || loadingData" class="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-amber-600 dark:hover:text-amber-400 text-slate-600 dark:text-slate-400 disabled:opacity-50 disabled:hover:bg-white dark:disabled:hover:bg-slate-800 disabled:hover:text-slate-600 disabled:cursor-not-allowed transition-colors shadow-sm">
+                            <i class="ph-bold ph-caret-right"></i>
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -496,6 +533,14 @@
             </div>
         </div>
     </div>
+
+    <!-- Fixed Copy Feedback Toast -->
+    <transition name="fade">
+        <div v-if="copiedCell.row !== -1" class="fixed bottom-20 right-8 z-[100] flex items-center gap-3 px-4 py-2 bg-amber-600 dark:bg-amber-500 text-white rounded-xl shadow-2xl border border-white/20 backdrop-blur-md">
+            <i class="ph-bold ph-check-circle text-lg"></i>
+            <span class="text-sm font-bold tracking-tight">Copied to Clipboard!</span>
+        </div>
+    </transition>
 
 </div>
 {% endblock %}
@@ -677,6 +722,8 @@
             searchQuery.value = '';
             sortCol.value = '';
             sortDir.value = 'ASC';
+            colWidths.value = {};
+            cancelEdit();
             fetchTableData();
         };
 
@@ -937,8 +984,123 @@
             }
         };
 
+        // Column Resizing State
+        const colWidths = ref({});
+        const resizingCol = ref({ field: null, startX: 0, startWidth: 0 });
+
+        const startColResize = (e, field) => {
+            const currentWidth = colWidths.value[field] || 200;
+            resizingCol.value = { field, startX: e.clientX, startWidth: currentWidth };
+            document.addEventListener('mousemove', handleColResize);
+            document.addEventListener('mouseup', stopColResize);
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+        };
+
+        const handleColResize = (e) => {
+            if (!resizingCol.value.field) return;
+            const diff = e.clientX - resizingCol.value.startX;
+            const newWidth = Math.max(50, Math.min(800, resizingCol.value.startWidth + diff));
+            colWidths.value[resizingCol.value.field] = newWidth;
+        };
+
+        const stopColResize = () => {
+            resizingCol.value = { field: null, startX: 0, startWidth: 0 };
+            document.removeEventListener('mousemove', handleColResize);
+            document.removeEventListener('mouseup', stopColResize);
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        };
+
+        // Inline Cell Editing State
+        const editingCell = ref({ row: -1, col: null });
+        const editDraftValue = ref('');
+
+        const startCellEdit = (rowIndex, colField, currentValue) => {
+            if (!currentPrimaryKeys.value.length || currentPrimaryKeys.value.includes(colField)) return;
+            editingCell.value = { row: rowIndex, col: colField };
+            editDraftValue.value = currentValue === null ? '' : (typeof currentValue === 'object' ? JSON.stringify(currentValue) : currentValue);
+        };
+
+        const cancelEdit = () => {
+            editingCell.value = { row: -1, col: null };
+            editDraftValue.value = '';
+        };
+
+        const saveCell = async () => {
+            const { row: rowIndex, col: colField } = editingCell.value;
+            if (rowIndex === -1 || !colField) return;
+
+            const originalRow = rows.value[rowIndex];
+            if (editDraftValue.value == originalRow[colField] || (editDraftValue.value === '' && originalRow[colField] === null)) {
+                cancelEdit();
+                return;
+            }
+
+            const pks = {};
+            currentPrimaryKeys.value.forEach(pk => {
+                pks[pk] = originalRow[pk];
+            });
+
+            const previousValue = originalRow[colField];
+            // Optimistic UI update
+            rows.value[rowIndex][colField] = editDraftValue.value;
+            cancelEdit();
+
+            try {
+                const res = await fetch(`/api/sqlite/${selectedFileId.value}/table/${encodeURIComponent(activeTable.value)}/row`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ primary_keys: pks, updates: { [colField]: editDraftValue.value } })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    baseSetup.showToast('Cell updated successfully');
+                } else {
+                    rows.value[rowIndex][colField] = previousValue; // Revert
+                    baseSetup.showToast(data.error || 'Failed to update cell', 'error');
+                }
+            } catch (e) {
+                rows.value[rowIndex][colField] = previousValue; // Revert
+                baseSetup.showToast('Network error updating cell', 'error');
+            }
+        };
+
+        // Cell Copy on 'c' Key
+        const copiedCell = ref({ row: -1, col: null });
+        const isCHeld = ref(false);
+
+        const copyToClipboard = (text, rowIdx, colField) => {
+            const val = text === null ? 'NULL' : (typeof text === 'object' ? JSON.stringify(text) : String(text));
+            navigator.clipboard.writeText(val).then(() => {
+                copiedCell.value = { row: rowIdx, col: colField };
+                setTimeout(() => {
+                    if (copiedCell.value.row === rowIdx && copiedCell.value.col === colField) {
+                        copiedCell.value = { row: -1, col: null };
+                    }
+                }, 1000);
+            });
+        };
+
+        const handleCellClick = (e, value, rowIdx, colField) => {
+            if (isCHeld.value) {
+                e.preventDefault();
+                copyToClipboard(value, rowIdx, colField);
+            }
+        };
+
         onMounted(() => {
             fetchFiles();
+
+            window.addEventListener('keydown', (e) => {
+                const tag = e.target.tagName.toLowerCase();
+                if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
+                if (e.key.toLowerCase() === 'c') isCHeld.value = true;
+            });
+            window.addEventListener('keyup', (e) => {
+                if (e.key.toLowerCase() === 'c') isCHeld.value = false;
+            });
+            window.addEventListener('blur', () => isCHeld.value = false);
         });
 
         return {
@@ -952,6 +1114,9 @@
             currentTableColumns, currentPrimaryKeys,
             selectSqliteTable, fetchTableData, sortBy, prevPage, nextPage,
             refreshCurrentDatabase,
+            colWidths, startColResize,
+            editingCell, editDraftValue, startCellEdit, cancelEdit, saveCell,
+            copiedCell, isCHeld, copyToClipboard, handleCellClick,
             isDragging, fileInput, triggerFileUpload, handleFileInputChange, onDragOver, onDragLeave, onDrop,
             showFileDropdown, switchActiveFile,
             showLocalPathModal, localPathInput, registerLocalPath, confirmDeleteFile,
@@ -961,6 +1126,9 @@
     };
 
     createApp({
+        directives: {
+            focus: { mounted(el) { el.focus(); } }
+        },
         setup: window.setupApp
     }).mount('#app');
 </script>
