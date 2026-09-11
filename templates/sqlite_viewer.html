@@ -418,10 +418,12 @@
 
 {% block scripts %}
 <script>
-    const { ref, reactive, computed, onMounted } = Vue;
-
     window.setupApp = () => {
         const baseSetup = window.baseAppSetup();
+
+        const openSqlConsole = () => {
+            baseSetup.showSqlPanel.value = true;
+        };
 
         // Sidebar width persistence
         const sqliteSidebarWidth = ref(parseInt(localStorage.getItem('sqlite_sidebar_width') || '280'));
@@ -825,11 +827,11 @@
             refreshCurrentDatabase,
             isDragging, fileInput, triggerFileUpload, handleFileInputChange, onDragOver, onDragLeave, onDrop,
             showLocalPathModal, localPathInput, registerLocalPath, confirmDeleteFile,
+            openSqlConsole,
             showRowModal, isEditingRow, rowFormData, openInsertModal, openEditModal, saveRowForm, confirmDeleteRow
         };
     };
 
-    const { createApp } = Vue;
     createApp({
         setup: window.setupApp
     }).mount('#app');
