@@ -58,7 +58,7 @@
             </div>
 
             <!-- Hidden file input for file picker -->
-            <input ref="fileInput" type="file" accept=".db,.sqlite,.sqlite3,.db3" class="hidden" @change="handleFileInputChange" />
+            <input ref="fileInput" type="file" class="hidden" @change="handleFileInputChange" />
 
             <!-- Active File Selector / Dropdown -->
             <div v-if="sqliteFiles.length > 0" class="relative">
@@ -655,7 +655,8 @@
         };
 
         const uploadSqliteFile = async (file) => {
-            showToast('Uploading SQLite file...');
+            console.log("Uploading file:", file.name, file.size);
+            baseSetup.showToast('Uploading SQLite file...');
             const formData = new FormData();
             formData.append('file', file);
             try {
@@ -664,16 +665,19 @@
                     body: formData
                 });
                 const data = await res.json();
+                console.log("Upload response:", data);
                 if (data.success) {
-                    showToast('File loaded successfully!');
+                    baseSetup.showToast('File loaded successfully!');
                     selectedFileId.value = data.file.id;
                     localStorage.setItem('last_sqlite_file_id', data.file.id);
                     await fetchFiles();
+                    await fetchSchema(data.file.id);
                 } else {
-                    showToast(data.error || 'Upload failed', 'error');
+                    baseSetup.showToast(data.error || 'Upload failed', 'error');
                 }
             } catch (e) {
-                showToast('Failed to upload file', 'error');
+                console.error("Upload error:", e);
+                baseSetup.showToast('Failed to upload file: ' + e.message, 'error');
             }
         };
 
