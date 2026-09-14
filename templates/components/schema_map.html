@@ -1,0 +1,215 @@
+<!-- Interactive Visual Schema & Foreign Key Map (ER Diagram) Component -->
+<div class="h-full w-full relative overflow-hidden select-none bg-slate-100/90 dark:bg-slate-950 flex flex-col cursor-default"
+     style="background-image: radial-gradient(circle, rgba(148, 163, 184, 0.35) 1px, transparent 1px); background-size: 24px 24px;"
+     @mousedown="startCanvasPan"
+     @mousemove="onCanvasMouseMove"
+     @mouseup="onCanvasMouseUp"
+     @mouseleave="onCanvasMouseUp"
+     @wheel.prevent="onWheel">
+
+    <!-- Top Left Status / Legend Overlay -->
+    <div class="absolute top-4 left-4 z-40 flex flex-col gap-1.5 pointer-events-none">
+        <div class="flex items-center gap-2">
+            <button @click="viewMode = 'data'"
+                    class="pointer-events-auto h-8 px-3 rounded-2xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200/80 dark:border-slate-800 text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 text-xs font-semibold flex items-center gap-1.5 shadow-md hover:shadow-lg transition-all">
+                <i class="ph-bold ph-arrow-left text-xs"></i>
+                <i class="ph-bold ph-table text-xs text-indigo-500"></i>
+                <span>Back to Data Grid</span>
+            </button>
+
+            <div class="flex items-center gap-2 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md px-3.5 py-1.5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-md pointer-events-auto">
+                <div class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                <span class="text-xs font-bold text-slate-800 dark:text-slate-100">Schema Map</span>
+                <span class="text-slate-300 dark:text-slate-700">•</span>
+                <span class="text-xs font-medium text-slate-600 dark:text-slate-400">
+                    {% raw %}{{ filteredTableNames.length }} {{ filteredTableNames.length === 1 ? 'table' : 'tables' }}{% endraw %}
+                </span>
+                <span class="text-slate-300 dark:text-slate-700">•</span>
+                <span class="text-xs font-semibold text-indigo-600 dark:text-indigo-400">
+                    {% raw %}{{ erdLinks.length }} {{ erdLinks.length === 1 ? 'FK relation' : 'FK relations' }}{% endraw %}
+                </span>
+            </div>
+        </div>
+        <div class="text-[11px] text-slate-500 dark:text-slate-400 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xs px-3 py-1 rounded-xl border border-slate-200/60 dark:border-slate-800/60 w-fit">
+            Drag cards to rearrange • Scroll or pinch to zoom/pan
+        </div>
+    </div>
+
+    <!-- Floating HUD Controls Overlay (Bottom Right) -->
+    <div class="erd-controls absolute bottom-5 right-5 z-40 flex items-center gap-2 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-1.5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xl text-slate-700 dark:text-slate-200">
+        <!-- Table Search / Filter -->
+        <div class="relative flex items-center">
+            <i class="ph-bold ph-magnifying-glass text-xs absolute left-2.5 text-slate-400"></i>
+            <input v-model="erdSearch"
+                   type="text"
+                   placeholder="Filter tables..."
+                   class="w-32 focus:w-48 transition-all pl-7 pr-6 py-1 text-xs bg-slate-100 dark:bg-slate-800 border border-transparent focus:border-indigo-400 rounded-xl focus:outline-none placeholder:text-slate-400 text-slate-800 dark:text-slate-100" />
+            <button v-if="erdSearch" @click="erdSearch = ''" class="absolute right-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                <i class="ph-bold ph-x text-[10px]"></i>
+            </button>
+        </div>
+
+        <div class="w-px h-5 bg-slate-200 dark:bg-slate-700 mx-0.5"></div>
+
+        <!-- Zoom Controls -->
+        <button @click="zoomOut" class="w-7 h-7 rounded-xl flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors" title="Zoom Out">
+            <i class="ph-bold ph-minus text-xs"></i>
+        </button>
+        <button @click="resetZoom" class="px-2 h-7 rounded-xl flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-mono font-semibold text-slate-700 dark:text-slate-300 transition-colors" title="Reset Zoom">
+            {% raw %}{{ Math.round(erdZoom * 100) }}%{% endraw %}
+        </button>
+        <button @click="zoomIn" class="w-7 h-7 rounded-xl flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors" title="Zoom In">
+            <i class="ph-bold ph-plus text-xs"></i>
+        </button>
+
+        <div class="w-px h-5 bg-slate-200 dark:bg-slate-700 mx-0.5"></div>
+
+        <!-- Auto Arrange -->
+        <button @click="autoArrange" class="h-7 px-2.5 rounded-xl flex items-center gap-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-300 transition-colors" title="Auto-arrange tables into grid">
+            <i class="ph-bold ph-squares-four text-xs text-indigo-500"></i>
+            <span class="hidden sm:inline">Auto Arrange</span>
+        </button>
+
+        <!-- Export Mermaid ERD -->
+        <button @click="exportMermaidErd" class="h-7 px-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/60 text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-2xs" title="Copy Mermaid ERD syntax to clipboard">
+            <i class="ph-bold ph-copy text-xs"></i>
+            <span>Copy Mermaid</span>
+        </button>
+    </div>
+
+    <!-- Scalable / Pannable Workspace Canvas -->
+    <div class="absolute inset-0 origin-top-left will-change-transform"
+         :style="{ transform: 'translate(' + erdPan.x + 'px, ' + erdPan.y + 'px) scale(' + erdZoom + ')' }">
+
+        <!-- SVG Connectors Layer -->
+        <svg class="absolute inset-0 pointer-events-none overflow-visible w-full h-full" style="min-width: 8000px; min-height: 8000px;">
+            <defs>
+                <!-- Arrowhead marker -->
+                <marker id="erd-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                    <path d="M 0 1 L 10 5 L 0 9 z" fill="#6366f1" />
+                </marker>
+                <marker id="erd-arrow-hover" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                    <path d="M 0 1 L 10 5 L 0 9 z" fill="#4338ca" />
+                </marker>
+                <!-- Start Dot marker -->
+                <marker id="erd-dot" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="5" markerHeight="5">
+                    <circle cx="4" cy="4" r="3" fill="#818cf8" />
+                </marker>
+                <marker id="erd-dot-hover" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="6" markerHeight="6">
+                    <circle cx="4" cy="4" r="3" fill="#4338ca" />
+                </marker>
+            </defs>
+
+            <!-- Links Group -->
+            <g v-for="link in erdLinks" :key="link.id">
+                <!-- Invisible wide hover zone -->
+                <path :d="link.path"
+                      fill="none"
+                      stroke="transparent"
+                      stroke-width="20"
+                      class="pointer-events-auto cursor-pointer"
+                      @mouseenter="hoveredLink = link.id"
+                      @mouseleave="hoveredLink = null" />
+
+                <!-- Visible Line -->
+                <path :d="link.path"
+                      fill="none"
+                      :stroke="hoveredLink === link.id || hoveredTable === link.sourceTable || hoveredTable === link.targetTable ? '#4f46e5' : '#94a3b8'"
+                      :stroke-width="hoveredLink === link.id || hoveredTable === link.sourceTable || hoveredTable === link.targetTable ? '2.5' : '1.5'"
+                      :stroke-opacity="hoveredLink === link.id || hoveredTable === link.sourceTable || hoveredTable === link.targetTable ? '1' : '0.6'"
+                      :stroke-dasharray="hoveredLink === link.id ? 'none' : 'none'"
+                      :marker-start="hoveredLink === link.id || hoveredTable === link.sourceTable || hoveredTable === link.targetTable ? 'url(#erd-dot-hover)' : 'url(#erd-dot)'"
+                      :marker-end="hoveredLink === link.id || hoveredTable === link.sourceTable || hoveredTable === link.targetTable ? 'url(#erd-arrow-hover)' : 'url(#erd-arrow)'"
+                      class="pointer-events-none transition-all duration-150" />
+
+                <!-- Midpoint Relationship Pill on hover -->
+                <g v-if="hoveredLink === link.id || hoveredTable === link.sourceTable || hoveredTable === link.targetTable"
+                   :transform="'translate(' + link.midX + ',' + link.midY + ')'"
+                   class="pointer-events-none animate-in fade-in zoom-in-95 duration-150">
+                    <rect x="-70" y="-12" width="140" height="24" rx="12" fill="#1e1b4b" stroke="#818cf8" stroke-width="1.5" />
+                    <text x="0" y="4" text-anchor="middle" fill="#e0e7ff" font-size="10" font-family="monospace" font-weight="600">
+                        {% raw %}{{ link.sourceCol }} &rarr; {{ link.targetCol }}{% endraw %}
+                    </text>
+                </g>
+            </g>
+        </svg>
+
+        <!-- Table Cards Layer -->
+        <div v-for="tbl in filteredTableNames" :key="tbl"
+             :id="'erd-card-' + tbl"
+             class="erd-card absolute rounded-2xl bg-white dark:bg-slate-900 border transition-[box-shadow,border-color] duration-150 select-none shadow-md hover:shadow-xl"
+             :class="[
+                 hoveredTable === tbl ? 'border-indigo-500 dark:border-indigo-400 ring-2 ring-indigo-500/20' : 'border-slate-200/90 dark:border-slate-800',
+                 draggingCardName === tbl ? 'opacity-95 shadow-2xl z-30 cursor-grabbing' : 'z-20',
+                 activeTable === tbl ? 'ring-2 ring-brand-500/30 dark:ring-brand-400/30' : ''
+             ]"
+             :style="{
+                 left: ((tablePositions[tbl] && tablePositions[tbl].x) || 0) + 'px',
+                 top: ((tablePositions[tbl] && tablePositions[tbl].y) || 0) + 'px',
+                 width: '260px'
+             }"
+             @mouseenter="hoveredTable = tbl"
+             @mouseleave="hoveredTable = null">
+
+            <!-- Card Header (Drag Handle) -->
+            <div class="h-11 px-3.5 bg-slate-50/90 dark:bg-slate-800/80 rounded-t-2xl border-b border-slate-100 dark:border-slate-800 flex items-center justify-between cursor-grab active:cursor-grabbing group/header"
+                 @mousedown="startDragCard($event, tbl)">
+                <div class="flex items-center gap-2 min-w-0 flex-1">
+                    <i class="ph-bold ph-dots-six-vertical text-slate-400 group-hover/header:text-slate-600 dark:text-slate-500 shrink-0"></i>
+                    <div class="min-w-0 flex-1">
+                        <div class="flex items-center gap-1.5">
+                            <i :class="(views && views.includes(tbl)) ? 'ph-duotone ph-eye text-violet-500' : 'ph-duotone ph-table text-indigo-500'" class="text-sm shrink-0"></i>
+                            <span class="text-xs font-bold text-slate-800 dark:text-slate-100 truncate" :title="tbl">{% raw %}{{ tbl }}{% endraw %}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-1.5 shrink-0 ml-2">
+                    <span class="text-[10px] font-mono text-slate-400 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded px-1.5 py-0.5">
+                        {% raw %}{{ (schema[tbl] && schema[tbl].columns ? schema[tbl].columns.length : 0) }}{% endraw %}
+                    </span>
+                    <button @click.stop="selectAndOpenTable(tbl)"
+                            title="Open Table in Data Grid"
+                            class="p-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/70 text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:border-indigo-200 transition-colors">
+                        <i class="ph-bold ph-arrow-square-out text-xs"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Columns List -->
+            <div class="p-1 max-h-[360px] overflow-y-auto divide-y divide-slate-100/60 dark:divide-slate-800/40 text-xs">
+                <div v-for="col in (schema[tbl] ? schema[tbl].columns : [])" :key="col.Field"
+                     class="erd-card-col h-7 flex items-center justify-between px-2.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors group/col"
+                     :class="{ 'bg-indigo-50/50 dark:bg-indigo-950/30 font-medium': schema[tbl] && schema[tbl].foreign_keys && schema[tbl].foreign_keys[col.Field] }">
+
+                    <div class="flex items-center gap-1.5 min-w-0 flex-1">
+                        <!-- PK Badge -->
+                        <span v-if="(schema[tbl] && schema[tbl].primary_keys && schema[tbl].primary_keys.includes(col.Field)) || col.Key === 'PRI' || col.pk === 1"
+                              class="shrink-0 flex items-center gap-0.5 text-[9px] font-bold px-1 py-0.2 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 border border-amber-200/80 dark:border-amber-800/60"
+                              title="Primary Key">
+                            <i class="ph-fill ph-key text-[10px]"></i> PK
+                        </span>
+                        <!-- FK Badge -->
+                        <span v-else-if="schema[tbl] && schema[tbl].foreign_keys && schema[tbl].foreign_keys[col.Field]"
+                              class="shrink-0 flex items-center gap-0.5 text-[9px] font-bold px-1 py-0.2 rounded bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/60"
+                              :title="'Foreign Key to ' + schema[tbl].foreign_keys[col.Field].table + '.' + schema[tbl].foreign_keys[col.Field].column">
+                            <i class="ph-bold ph-link text-[10px]"></i> FK
+                        </span>
+                        <i v-else class="ph-bold ph-text-t text-[11px] text-slate-300 dark:text-slate-600 shrink-0"></i>
+
+                        <span class="truncate text-slate-700 dark:text-slate-300 text-[11px]" :title="col.Field">
+                            {% raw %}{{ col.Field }}{% endraw %}
+                        </span>
+                    </div>
+
+                    <div class="flex items-center gap-1 shrink-0 ml-2">
+                        <span class="text-[10px] font-mono text-slate-400 dark:text-slate-500">
+                            {% raw %}{{ col.Type ? col.Type.split('(')[0] : '' }}{% endraw %}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>

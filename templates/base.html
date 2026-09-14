@@ -90,21 +90,21 @@
                 {% endif %}
             </div>
 
-            <div class="flex items-center justify-end gap-3 shrink-0">
+            <div class="flex items-center justify-end gap-2.5 shrink-0">
                 <a href="/sqlite" class="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-1.5 transition-colors shadow-sm" title="Dedicated SQLite Viewer">
-                    <i class="ph-bold ph-file-sql text-amber-500"></i> SQLite Viewer
+                    <i class="ph-bold ph-file-sql text-amber-500"></i> <span class="hidden md:inline">SQLite Viewer</span>
                 </a>
                 <a href="/" class="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-1.5 transition-colors shadow-sm" title="Server Profiles">
-                    <i class="ph-bold ph-hard-drives text-brand-500"></i> Server Profiles
+                    <i class="ph-bold ph-hard-drives text-brand-500"></i> <span class="hidden md:inline">Server Profiles</span>
                 </a>
-                <button @click="showFeaturesModal = true" class="w-10 h-10 rounded-full flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-600 dark:text-slate-400" title="App Features & Shortcuts">
-                    <i class="ph-bold ph-info text-xl"></i>
+                <button @click="showFeaturesModal = true" class="w-9 h-9 rounded-full flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-600 dark:text-slate-400" title="App Features & Shortcuts">
+                    <i class="ph-bold ph-info text-lg"></i>
                 </button>
-                <button @click="toggleDarkMode" class="w-10 h-10 rounded-full flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-600 dark:text-slate-400">
+                <button @click="toggleDarkMode" class="w-9 h-9 rounded-full flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-600 dark:text-slate-400">
                     <i class="ph-bold" :class="isDark ? 'ph-sun' : 'ph-moon'"></i>
                 </button>
-                <button @click="showSqlPanel = !showSqlPanel" class="px-4 py-2 rounded-full bg-slate-800 dark:bg-slate-100 dark:text-slate-900 text-white text-sm font-medium hover:bg-slate-900 dark:hover:bg-white transition-colors shadow-md flex items-center gap-2">
-                    <i class="ph ph-terminal"></i> Raw SQL
+                <button @click="showSqlPanel = !showSqlPanel" class="px-3.5 py-1.5 rounded-full bg-slate-800 dark:bg-slate-100 dark:text-slate-900 text-white text-xs font-medium hover:bg-slate-900 dark:hover:bg-white transition-colors shadow-md flex items-center gap-1.5">
+                    <i class="ph ph-terminal text-sm"></i> <span class="hidden sm:inline">Raw SQL</span>
                 </button>
             </div>
         </header>
@@ -112,19 +112,34 @@
         <!-- Main Content -->
         <main class="flex-1 overflow-hidden relative flex" :class="sqlPosition === 'bottom' ? 'flex-col' : 'flex-row'">
             <!-- Content Area -->
-            <div class="flex-1 overflow-auto h-full flex flex-col min-w-0 min-h-0">
+            <div class="flex-1 overflow-hidden h-full flex flex-col min-w-0 min-h-0">
                 {% block content %}{% endblock %}
             </div>
 
             <!-- SQL Console Drawer: Smooth Slide for Right (Width) & Bottom (Height) -->
-            <div class="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col shadow-2xl relative z-10 shrink-0 transition-all duration-300 ease-in-out overflow-hidden"
+            <div class="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col shadow-2xl relative z-30 shrink-0 transition-[width,height,opacity] duration-300 ease-in-out overflow-hidden"
                  :class="[
+                     isResizingSql ? 'duration-0' : '',
                      sqlPosition === 'bottom'
-                         ? (showSqlPanel ? 'h-80 md:h-[380px] border-t opacity-100 w-full' : 'h-0 border-t-0 opacity-0 pointer-events-none w-full')
-                         : (showSqlPanel ? 'w-96 md:w-[420px] border-l opacity-100 h-full' : 'w-0 border-l-0 opacity-0 pointer-events-none h-full')
-                 ]">
-                <div class="flex flex-col shrink-0"
-                     :class="sqlPosition === 'bottom' ? 'h-80 md:h-[380px] w-full' : 'h-full w-96 md:w-[420px]'">
+                         ? (showSqlPanel ? 'border-t opacity-100 w-full' : 'border-t-0 opacity-0 pointer-events-none w-full')
+                         : (showSqlPanel ? 'border-l opacity-100 h-full' : 'border-l-0 opacity-0 pointer-events-none h-full')
+                 ]"
+                 :style="sqlPosition === 'bottom'
+                     ? { height: showSqlPanel ? (sqlPanelHeight + 'px') : '0px' }
+                     : { width: showSqlPanel ? (sqlPanelWidth + 'px') : '0px' }">
+
+                <!-- Resizer Handle -->
+                <div v-if="showSqlPanel && sqlPosition === 'right'"
+                     @mousedown="startSqlResizeRight"
+                     class="absolute top-0 left-0 w-1.5 h-full cursor-col-resize hover:bg-brand-500/60 active:bg-brand-500 z-50 transition-colors"
+                     title="Drag to resize console width"></div>
+                <div v-if="showSqlPanel && sqlPosition === 'bottom'"
+                     @mousedown="startSqlResizeBottom"
+                     class="absolute top-0 left-0 w-full h-1.5 cursor-row-resize hover:bg-brand-500/60 active:bg-brand-500 z-50 transition-colors"
+                     title="Drag to resize console height"></div>
+
+                <div class="flex flex-col shrink-0 h-full w-full"
+                     :style="sqlPosition === 'right' ? { width: (sqlPanelWidth + 'px') } : { width: '100%' }">
                     <!-- Panel Header -->
                     <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-900/50 shrink-0">
                         <div class="flex items-center gap-2 min-w-0">
@@ -603,6 +618,77 @@
                     console.error('Failed to save sql_panel_position to localStorage:', e);
                 }
             };
+
+            // SQL Panel Width / Height with localStorage persistence
+            const getSavedSqlWidth = () => {
+                try {
+                    const saved = localStorage.getItem('sql_panel_width');
+                    if (saved) {
+                        const parsed = parseInt(saved, 10);
+                        if (!isNaN(parsed) && parsed >= 300 && parsed <= 900) return parsed;
+                    }
+                } catch(e) {}
+                return 400;
+            };
+            const getSavedSqlHeight = () => {
+                try {
+                    const saved = localStorage.getItem('sql_panel_height');
+                    if (saved) {
+                        const parsed = parseInt(saved, 10);
+                        if (!isNaN(parsed) && parsed >= 200 && parsed <= 700) return parsed;
+                    }
+                } catch(e) {}
+                return 360;
+            };
+            const sqlPanelWidth = ref(getSavedSqlWidth());
+            const sqlPanelHeight = ref(getSavedSqlHeight());
+            const isResizingSql = ref(false);
+
+            const startSqlResizeRight = (e) => {
+                isResizingSql.value = true;
+                const startX = e.clientX;
+                const startW = sqlPanelWidth.value;
+                const onMove = (moveEv) => {
+                    const diff = startX - moveEv.clientX;
+                    const newW = Math.max(300, Math.min(window.innerWidth - 300, startW + diff));
+                    sqlPanelWidth.value = newW;
+                };
+                const onUp = () => {
+                    isResizingSql.value = false;
+                    window.removeEventListener('mousemove', onMove);
+                    window.removeEventListener('mouseup', onUp);
+                    document.body.style.cursor = '';
+                    document.body.style.userSelect = '';
+                    try { localStorage.setItem('sql_panel_width', String(sqlPanelWidth.value)); } catch(e) {}
+                };
+                document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none';
+                window.addEventListener('mousemove', onMove);
+                window.addEventListener('mouseup', onUp);
+            };
+
+            const startSqlResizeBottom = (e) => {
+                isResizingSql.value = true;
+                const startY = e.clientY;
+                const startH = sqlPanelHeight.value;
+                const onMove = (moveEv) => {
+                    const diff = startY - moveEv.clientY;
+                    const newH = Math.max(200, Math.min(window.innerHeight - 150, startH + diff));
+                    sqlPanelHeight.value = newH;
+                };
+                const onUp = () => {
+                    isResizingSql.value = false;
+                    window.removeEventListener('mousemove', onMove);
+                    window.removeEventListener('mouseup', onUp);
+                    document.body.style.cursor = '';
+                    document.body.style.userSelect = '';
+                    try { localStorage.setItem('sql_panel_height', String(sqlPanelHeight.value)); } catch(e) {}
+                };
+                document.body.style.cursor = 'row-resize';
+                document.body.style.userSelect = 'none';
+                window.addEventListener('mousemove', onMove);
+                window.addEventListener('mouseup', onUp);
+            };
             const sqlDb = ref(localStorage.getItem('last_sql_db') || '');
             watch(sqlDb, (newDb) => {
                 if (newDb) {
@@ -937,7 +1023,7 @@
 
             return {
                 isDark, toggleDarkMode, showFeaturesModal, isOnDashboard,
-                showSqlPanel, sqlPosition, setSqlPosition, sqlDb, sqlQuery, sqlLoading, sqlError, sqlSuccess, sqlRows, sqlIsSelect, sqlAffected, sqlResultTime, dbList, currentTable, executeSql,
+                showSqlPanel, sqlPosition, setSqlPosition, sqlPanelWidth, sqlPanelHeight, isResizingSql, startSqlResizeRight, startSqlResizeBottom, sqlDb, sqlQuery, sqlLoading, sqlError, sqlSuccess, sqlRows, sqlIsSelect, sqlAffected, sqlResultTime, dbList, currentTable, executeSql,
                 showCmdK, cmdKSearch, cmdKIndex, cmdKInput, cmdKList, filteredCmdKDbList, cmdKNav, cmdKExecute,
                 toast, showToast, goTo,
                 profiles, activeProfile, showProfileModal, showProfileDropdown, showEngineDropdown, setEngine, newProfile, isEditingProfile, editingProfileOriginalName, fetchProfiles, switchProfile, handleProfileSwitch, handleEngineChange, createProfile, updateProfile, deleteProfile, startEditProfile, cancelEditProfile,

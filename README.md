@@ -50,7 +50,15 @@ Engineered with a modular Flask backend and a modern Vue 3 / Tailwind CSS reacti
 * **Column Visibility & Reordering:** Clever, minimal toolbar dropdown allowing selective column hiding/showing and drag-and-drop reordering with real-time search filtering, quick actions ("Show All", "Only PKs", "Reset"), and per-table `localStorage` persistence.
 * **Foreign Key Badges:** Automatically inspects schema constraints and highlights relational foreign keys with reference tooltips.
 
-### Comprehensive Schema and Relationship Inspector
+### Comprehensive Schema and Relationship Inspector (Visual ER Diagram)
+* **Interactive Visual Schema Map (ER Diagram):** Full interactive canvas rendering table entities and foreign key relationship connectors with smooth cubic Bézier curves and directional arrowhead markers.
+* **Canvas Pan & Zoom:** Infinite canvas with blueprint grid background, smooth mouse wheel zooming (35% to 200%), and background click-and-drag panning.
+* **Draggable Table Cards:** Rearrange and customize table positions freely on canvas with automatic live recalculation of connector lines. Layouts persist in `localStorage` per database.
+* **Auto-Arrange Grid:** Single-click intelligent multi-column layout organizing all tables and relationships cleanly.
+* **Entity Details & Navigation:** Each card visualizes table name, column count, PK/FK badges, column data types, and a direct shortcut to jump straight to its data grid.
+* **Relationship Hover Badges:** Hover over connector lines or foreign key columns to highlight the link and inspect the exact `source.col → target.col` relationship in a focused midpoint pill.
+* **Export Mermaid ERD:** Instant one-click clipboard export generating standard Mermaid-compatible `erDiagram` syntax ready to paste into GitHub READMEs, Notion, or Obsidian.
+* **Table Search Filter:** Quick filter input on the canvas to instantly isolate and locate specific tables in large relational schemas.
 * **Table and View Breakdown:** List physical tables alongside SQL views in categorized sidebars.
 * **Column Details:** Detailed field inspection showing SQL column data types, nullability, default values, primary keys, and auto-increment properties.
 * **Foreign Key Mappings:** Interactive view showing source column, target table, and target column relationships.

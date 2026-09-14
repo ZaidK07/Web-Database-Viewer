@@ -482,3 +482,324 @@ window.createColumnManagerModule = function(Vue, allColumnsGetter, getStorageKey
     };
 };
 
+window.createErdModule = function(Vue, schemaGetter, onSelectTable, getStorageKey, showToast) {
+    const viewMode = Vue.ref('data'); // 'data' | 'erd'
+    const erdZoom = Vue.ref(1);
+    const erdPan = Vue.ref({ x: 50, y: 50 });
+    const erdSearch = Vue.ref('');
+    const tablePositions = Vue.ref({});
+    const hoveredLink = Vue.ref(null);
+    const hoveredTable = Vue.ref(null);
+
+    const isDraggingCard = Vue.ref(false);
+    const draggingCardName = Vue.ref(null);
+    const dragOffset = Vue.ref({ x: 0, y: 0 });
+
+    const isPanning = Vue.ref(false);
+    const panStart = Vue.ref({ x: 0, y: 0, initialPanX: 0, initialPanY: 0 });
+
+    const getSchema = () => {
+        if (typeof schemaGetter === 'function') return schemaGetter() || {};
+        return (schemaGetter && schemaGetter.value) || {};
+    };
+
+    const tableNames = Vue.computed(() => {
+        const schema = getSchema();
+        return Object.keys(schema);
+    });
+
+    const filteredTableNames = Vue.computed(() => {
+        const list = tableNames.value;
+        if (!erdSearch.value) return list;
+        const q = erdSearch.value.toLowerCase().trim();
+        return list.filter(t => t.toLowerCase().includes(q));
+    });
+
+    // Extract all foreign key links
+    const erdLinks = Vue.computed(() => {
+        const links = [];
+        const schema = getSchema();
+        const positions = tablePositions.value;
+
+        Object.keys(schema).forEach(sourceTable => {
+            const tableDef = schema[sourceTable];
+            if (!tableDef || !tableDef.foreign_keys) return;
+            const fks = tableDef.foreign_keys;
+
+            Object.keys(fks).forEach(sourceCol => {
+                const target = fks[sourceCol];
+                if (!target || !target.table || !schema[target.table]) return;
+
+                const targetTable = target.table;
+                const targetCol = target.column;
+
+                const sourcePos = positions[sourceTable] || { x: 0, y: 0 };
+                const targetPos = positions[targetTable] || { x: 0, y: 0 };
+
+                // Determine column row offsets
+                const sourceCols = tableDef.columns || [];
+                const targetCols = schema[targetTable]?.columns || [];
+
+                const sourceIdx = sourceCols.findIndex(c => c.Field === sourceCol);
+                const targetIdx = targetCols.findIndex(c => c.Field === targetCol);
+
+                const sourceRowY = sourceIdx >= 0 ? (sourcePos.y + 44 + (sourceIdx * 28) + 14) : (sourcePos.y + 22);
+                const targetRowY = targetIdx >= 0 ? (targetPos.y + 44 + (targetIdx * 28) + 14) : (targetPos.y + 22);
+
+                const cardWidth = 260;
+                let startX, endX;
+
+                if (sourcePos.x + cardWidth < targetPos.x) {
+                    // Source is to the left of Target
+                    startX = sourcePos.x + cardWidth;
+                    endX = targetPos.x;
+                } else if (sourcePos.x > targetPos.x + cardWidth) {
+                    // Source is to the right of Target
+                    startX = sourcePos.x;
+                    endX = targetPos.x + cardWidth;
+                } else {
+                    // Overlapping horizontally: connect nearest edges
+                    startX = sourcePos.x + cardWidth;
+                    endX = targetPos.x + cardWidth;
+                }
+
+                // Smooth Bézier curve path
+                const dx = Math.max(50, Math.abs(endX - startX) * 0.45);
+                const cx1 = startX < endX ? startX + dx : startX - dx;
+                const cx2 = startX < endX ? endX - dx : endX + dx;
+                const path = `M ${startX} ${sourceRowY} C ${cx1} ${sourceRowY}, ${cx2} ${targetRowY}, ${endX} ${targetRowY}`;
+
+                links.push({
+                    id: `${sourceTable}.${sourceCol}->${targetTable}.${targetCol}`,
+                    sourceTable,
+                    sourceCol,
+                    targetTable,
+                    targetCol,
+                    path,
+                    startX,
+                    startY: sourceRowY,
+                    endX,
+                    endY: targetRowY,
+                    midX: (startX + endX) / 2,
+                    midY: (sourceRowY + targetRowY) / 2
+                });
+            });
+        });
+        return links;
+    });
+
+    // Auto arrange nodes in a responsive grid
+    const autoArrange = () => {
+        const schema = getSchema();
+        const tables = Object.keys(schema);
+        if (tables.length === 0) return;
+
+        const cardWidth = 260;
+        const colCount = Math.max(2, Math.min(4, Math.ceil(Math.sqrt(tables.length))));
+        const gapX = 80;
+        const colHeights = new Array(colCount).fill(40);
+        const newPositions = {};
+
+        tables.forEach((table, i) => {
+            const colIndex = i % colCount;
+            const x = 40 + colIndex * (cardWidth + gapX);
+            const y = colHeights[colIndex];
+
+            newPositions[table] = { x, y };
+
+            const colCountEstimate = (schema[table]?.columns || []).length;
+            const cardHeight = 44 + (colCountEstimate * 28) + 16;
+            colHeights[colIndex] += cardHeight + 40;
+        });
+
+        tablePositions.value = newPositions;
+        savePositions();
+    };
+
+    const loadPositions = () => {
+        if (typeof getStorageKey !== 'function') return;
+        const key = getStorageKey();
+        if (!key) return;
+        try {
+            const saved = localStorage.getItem('erd_pos_' + key);
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (typeof parsed === 'object') {
+                    tablePositions.value = parsed;
+                    return;
+                }
+            }
+        } catch(e) {}
+        autoArrange();
+    };
+
+    const savePositions = () => {
+        if (typeof getStorageKey !== 'function') return;
+        const key = getStorageKey();
+        if (!key) return;
+        try {
+            localStorage.setItem('erd_pos_' + key, JSON.stringify(tablePositions.value));
+        } catch(e) {}
+    };
+
+    // Zoom and Pan Controls
+    const zoomIn = () => {
+        erdZoom.value = Math.min(2.0, parseFloat((erdZoom.value + 0.15).toFixed(2)));
+    };
+
+    const zoomOut = () => {
+        erdZoom.value = Math.max(0.35, parseFloat((erdZoom.value - 0.15).toFixed(2)));
+    };
+
+    const resetZoom = () => {
+        erdZoom.value = 1;
+        erdPan.value = { x: 50, y: 50 };
+    };
+
+    const onWheel = (e) => {
+        if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -0.1 : 0.1;
+            erdZoom.value = Math.max(0.35, Math.min(2.0, parseFloat((erdZoom.value + delta).toFixed(2))));
+        } else {
+            erdPan.value = {
+                x: erdPan.value.x - e.deltaX * 0.7,
+                y: erdPan.value.y - e.deltaY * 0.7
+            };
+        }
+    };
+
+    // Card Dragging
+    const startDragCard = (e, tableName) => {
+        if (e.button !== 0) return;
+        isDraggingCard.value = true;
+        draggingCardName.value = tableName;
+
+        const currentPos = tablePositions.value[tableName] || { x: 0, y: 0 };
+        dragOffset.value = {
+            x: (e.clientX / erdZoom.value) - currentPos.x,
+            y: (e.clientY / erdZoom.value) - currentPos.y
+        };
+        e.stopPropagation();
+    };
+
+    // Canvas Background Panning
+    const startCanvasPan = (e) => {
+        if (e.target.closest('.erd-card') || e.target.closest('.erd-controls')) return;
+        isPanning.value = true;
+        panStart.value = {
+            x: e.clientX,
+            y: e.clientY,
+            initialPanX: erdPan.value.x,
+            initialPanY: erdPan.value.y
+        };
+    };
+
+    const onCanvasMouseMove = (e) => {
+        if (isDraggingCard.value && draggingCardName.value) {
+            const table = draggingCardName.value;
+            const newX = Math.round((e.clientX / erdZoom.value) - dragOffset.value.x);
+            const newY = Math.round((e.clientY / erdZoom.value) - dragOffset.value.y);
+            tablePositions.value = {
+                ...tablePositions.value,
+                [table]: { x: Math.max(0, newX), y: Math.max(0, newY) }
+            };
+        } else if (isPanning.value) {
+            erdPan.value = {
+                x: panStart.value.initialPanX + (e.clientX - panStart.value.x),
+                y: panStart.value.initialPanY + (e.clientY - panStart.value.y)
+            };
+        }
+    };
+
+    const onCanvasMouseUp = () => {
+        if (isDraggingCard.value) {
+            isDraggingCard.value = false;
+            draggingCardName.value = null;
+            savePositions();
+        }
+        isPanning.value = false;
+    };
+
+    const selectAndOpenTable = (tableName) => {
+        viewMode.value = 'data';
+        if (typeof onSelectTable === 'function') {
+            onSelectTable(tableName);
+        }
+    };
+
+    // Export Mermaid ERD
+    const exportMermaidErd = async () => {
+        const schema = getSchema();
+        let mermaid = 'erDiagram\n';
+
+        Object.keys(schema).forEach(tbl => {
+            const def = schema[tbl];
+            const cleanTbl = tbl.replace(/[^a-zA-Z0-9_]/g, '_');
+            mermaid += `    ${cleanTbl} {\n`;
+            (def.columns || []).forEach(col => {
+                let cleanType = (col.Type || 'text').split('(')[0].replace(/[^a-zA-Z0-9]/g, '_');
+                let keyTag = '';
+                if (col.Key === 'PRI' || col.pk === 1) keyTag = ' PK';
+                else if (def.foreign_keys && def.foreign_keys[col.Field]) keyTag = ' FK';
+                const cleanField = col.Field.replace(/[^a-zA-Z0-9_]/g, '_');
+                mermaid += `        ${cleanType} ${cleanField}${keyTag}\n`;
+            });
+            mermaid += `    }\n`;
+        });
+
+        // Add relationships
+        Object.keys(schema).forEach(sourceTable => {
+            const def = schema[sourceTable];
+            if (!def || !def.foreign_keys) return;
+            const cleanSource = sourceTable.replace(/[^a-zA-Z0-9_]/g, '_');
+            Object.keys(def.foreign_keys).forEach(sourceCol => {
+                const target = def.foreign_keys[sourceCol];
+                if (!target || !target.table) return;
+                const cleanTarget = target.table.replace(/[^a-zA-Z0-9_]/g, '_');
+                mermaid += `    ${cleanSource} }o--|| ${cleanTarget} : "${sourceCol}"\n`;
+            });
+        });
+
+        try {
+            await navigator.clipboard.writeText(mermaid);
+            if (typeof showToast === 'function') {
+                showToast('Mermaid ERD copied to clipboard!');
+            }
+        } catch(e) {
+            if (typeof showToast === 'function') {
+                showToast('Failed to copy to clipboard', 'error');
+            }
+        }
+    };
+
+    return {
+        viewMode,
+        erdZoom,
+        erdPan,
+        erdSearch,
+        tablePositions,
+        hoveredLink,
+        hoveredTable,
+        isDraggingCard,
+        draggingCardName,
+        isPanning,
+        tableNames,
+        filteredTableNames,
+        erdLinks,
+        autoArrange,
+        loadPositions,
+        savePositions,
+        zoomIn,
+        zoomOut,
+        resetZoom,
+        onWheel,
+        startDragCard,
+        startCanvasPan,
+        onCanvasMouseMove,
+        onCanvasMouseUp,
+        selectAndOpenTable,
+        exportMermaidErd
+    };
+};
+

@@ -29,6 +29,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Quick action shortcuts: "Show All", "Only PKs", and "Reset".
   - Column reordering via single-click Up / Down caret buttons and HTML5 drag-and-drop.
   - Per-table preference persistence in `localStorage` preserving hidden state and ordering across sessions.
+- **Interactive Visual Schema & Foreign Key Map (ER Diagram)**:
+  - High-performance, zero-dependency interactive canvas with blueprint background styling.
+  - Real-time SVG relationship connector paths using cubic Bézier curves and directional arrowheads.
+  - Draggable table cards with column breakdown, PK/FK badges, column types, and quick jump to data grid.
+  - Interactive relationship hover state with midpoint badge showing `sourceCol → targetCol`.
+  - Infinite canvas navigation: mouse drag panning, mouse wheel / button zooming (35% to 200%).
+  - Intelligent auto-arrange grid algorithm for clean multi-column database layout.
+  - Single-click "Copy Mermaid ERD" export button copying complete GitHub/Notion-compatible Mermaid syntax.
+  - Persistent per-database layout coordinate storage in `localStorage`.
 - Comprehensive open-source documentation suite:
   - Insanely detailed `README.md` with system architecture and full API reference.
   - `CONTRIBUTING.md` guide for open-source contributors.

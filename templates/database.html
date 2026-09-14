@@ -164,70 +164,144 @@
         </div>
     </div>
 
-    <!-- Main Content Area: Data Preview -->
+    <!-- Main Content Area: Data Preview or ER Diagram -->
     <div class="flex-1 flex flex-col relative min-w-0 bg-white dark:bg-slate-950">
         
-        <!-- Empty State -->
-        <div v-if="!activeTable" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-50/50 dark:bg-slate-950/50 backdrop-blur-[2px] z-10">
-            <div class="w-16 h-16 rounded-full bg-white dark:bg-slate-900 shadow-sm border border-slate-200 dark:border-slate-800 flex items-center justify-center text-slate-300 dark:text-slate-600 mb-4">
-                <i class="ph-duotone ph-table text-3xl"></i>
-            </div>
-            <h3 class="text-lg font-medium text-slate-700 dark:text-slate-300">Select a table</h3>
-            <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Choose a table from the sidebar to view its data.</p>
+        <!-- ER Diagram View -->
+        <div v-if="viewMode === 'erd'" class="h-full w-full relative">
+            {% include 'components/schema_map.html' %}
         </div>
 
-        <!-- Table View Content (Shown only when activeTable is set) -->
-        <div v-if="activeTable" class="h-full flex flex-col w-full bg-white dark:bg-slate-900 shadow-sm border-l border-slate-200 dark:border-slate-800 transition-colors duration-300">
-            
-            <!-- Table Header -->
-            <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900 shrink-0">
-                <div>
-                    <div class="flex items-center gap-2">
-                        <h2 class="text-xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">{% raw %}{{ activeTable }}{% endraw %}</h2>
-                        <span class="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider" :class="views.includes(activeTable) ? 'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400' : 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400'">{% raw %}{{ views.includes(activeTable) ? 'View' : 'Table' }}{% endraw %}</span>
-                    </div>
+        <!-- Data Grid View -->
+        <template v-else>
+            <!-- Empty State -->
+            <div v-if="!activeTable" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-50/50 dark:bg-slate-950/50 backdrop-blur-[2px] z-10">
+                <div class="w-16 h-16 rounded-full bg-white dark:bg-slate-900 shadow-sm border border-slate-200 dark:border-slate-800 flex items-center justify-center text-slate-300 dark:text-slate-600 mb-4">
+                    <i class="ph-duotone ph-table text-3xl"></i>
                 </div>
-                
-                <div class="flex items-center gap-3">
-                    <button @click="openAddRowModal" class="h-9 px-3.5 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition-colors shadow-sm flex items-center gap-1.5">
-                        <i class="ph-bold ph-plus"></i> Add Row
-                    </button>
-                    <button @click="exportCSV" class="h-9 px-3.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-sm flex items-center gap-1.5">
-                        <i class="ph-bold ph-file-csv"></i> Export CSV
-                    </button>
-
-                    <!-- Column Visibility & Reordering Dropdown -->
-                    {% include 'components/column_dropdown.html' %}
-
-                    <!-- Batch Selection Controls -->
-                    <button @click="toggleBatchMode" 
-                            :class="batchMode ? 'bg-amber-100 dark:bg-amber-950/60 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 font-semibold' : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 font-medium'"
-                            class="h-9 px-3 rounded-lg border text-sm transition-colors shadow-sm flex items-center gap-1.5"
-                            :title="batchMode ? 'Exit batch selection' : 'Select multiple rows for batch actions'">
-                        <i :class="batchMode ? 'ph-bold ph-x text-xs' : 'ph-bold ph-checks'"></i>
-                        <span>{% raw %}{{ batchMode ? 'Cancel' : 'Batch Select' }}{% endraw %}</span>
-                    </button>
-                    <button v-if="batchMode && selectedRows.length > 0" 
-                            @click="deleteSelectedRows" 
-                            :disabled="isBatchDeleting"
-                            class="h-9 px-3.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-semibold shadow-sm flex items-center gap-1.5 transition-all animate-in fade-in zoom-in-95 disabled:opacity-50">
-                        <i v-if="isBatchDeleting" class="ph ph-spinner animate-spin"></i>
-                        <i v-else class="ph-bold ph-trash"></i>
-                        <span>Delete Selected ({% raw %}{{ selectedRows.length }}{% endraw %})</span>
-                    </button>
-                    <div class="w-px h-5 bg-slate-300 dark:bg-slate-700 mx-0.5"></div>
-                    <button @click="loadData(currentPage)" class="h-9 w-9 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-slate-200 transition-colors shadow-sm flex items-center justify-center shrink-0" title="Reload Data">
-                        <i class="ph-bold ph-arrow-counter-clockwise text-base" :class="{'animate-spin': dataLoading}"></i>
-                    </button>
-                    <div class="relative">
-                        <i class="ph ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
-                        <input v-model="searchQuery" @keyup.enter="loadData(1)" type="text" placeholder="Search rows..." class="h-9 pl-9 pr-4 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 w-64 shadow-sm placeholder:text-slate-400 dark:placeholder:text-slate-500" />
-                    </div>
-                    <button @click="loadData(1)" class="h-9 px-3.5 rounded-lg bg-slate-800 dark:bg-slate-100 dark:text-slate-900 text-white text-sm font-medium hover:bg-slate-900 dark:hover:bg-white transition-colors shadow-sm flex items-center">
-                        Search
-                    </button>
-                </div>
+                <h3 class="text-lg font-medium text-slate-700 dark:text-slate-300">Select a table</h3>
+                <p class="text-sm text-slate-500 dark:text-slate-400 mt-1 mb-4">Choose a table from the sidebar to view its data.</p>
+                <button @click="viewMode = 'erd'" class="px-4 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800/60 text-indigo-700 dark:text-indigo-300 text-xs font-semibold flex items-center gap-2 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-colors shadow-2xs">
+                    <i class="ph-bold ph-tree-structure text-sm"></i>
+                    <span>Explore Visual Schema &amp; ER Map</span>
+                </button>
             </div>
+
+            <!-- Table View Content (Shown only when activeTable is set) -->
+            <div v-if="activeTable" class="h-full flex flex-col w-full bg-white dark:bg-slate-900 shadow-sm border-l border-slate-200 dark:border-slate-800 transition-colors duration-300 min-w-0">
+                
+                <!-- Table Header -->
+                <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900 shrink-0">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <h2 class="text-xl font-bold text-slate-800 dark:text-slate-100 tracking-tight truncate max-w-[180px] sm:max-w-[260px] xl:max-w-[360px]" :title="activeTable">{% raw %}{{ activeTable }}{% endraw %}</h2>
+                        <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold shrink-0" :class="views.includes(activeTable) ? 'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400' : 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400'">{% raw %}{{ views.includes(activeTable) ? 'View' : 'Table' }}{% endraw %}</span>
+                    </div>
+                    
+                    <div class="flex items-center gap-2.5 shrink-0">
+                        <!-- Actions Custom Dropdown (Add Row, Export CSV, Batch Select) -->
+                        <div class="relative" id="table-actions-menu">
+                            <div v-if="showActionsDropdown" class="fixed inset-0 z-30" @click="showActionsDropdown = false"></div>
+                            <button @click="showActionsDropdown = !showActionsDropdown"
+                                    class="h-9 px-3.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 font-medium text-sm transition-all shadow-sm flex items-center gap-1.5 shrink-0 relative z-40"
+                                    :class="{'border-brand-400 ring-1 ring-brand-400': showActionsDropdown}"
+                                    title="Table actions">
+                                <i class="ph-bold ph-lightning text-amber-500"></i>
+                                <span>Actions</span>
+                                <i class="ph-bold ph-caret-down text-xs text-slate-400 transition-transform duration-200" :class="{'rotate-180': showActionsDropdown}"></i>
+                            </button>
+
+                            <!-- Dropdown Menu Panel -->
+                            <div v-if="showActionsDropdown" 
+                                 class="absolute left-0 mt-1.5 w-52 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 z-40 p-1.5 divide-y divide-slate-100 dark:divide-slate-800 animate-in fade-in zoom-in-95 duration-150 flex flex-col">
+                                <div class="p-1 flex flex-col gap-0.5">
+                                    <button type="button" @click="showActionsDropdown = false; openAddRowModal()" 
+                                            class="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-green-50 dark:hover:bg-green-950/40 hover:text-green-700 dark:hover:text-green-300 rounded-xl transition-colors text-left">
+                                        <div class="w-6 h-6 rounded-lg bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 flex items-center justify-center shrink-0">
+                                            <i class="ph-bold ph-plus text-xs"></i>
+                                        </div>
+                                        <span>Add Row</span>
+                                    </button>
+                                    <button type="button" @click="showActionsDropdown = false; exportCSV()" 
+                                            class="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors text-left">
+                                        <div class="w-6 h-6 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 flex items-center justify-center shrink-0">
+                                            <i class="ph-bold ph-file-csv text-xs"></i>
+                                        </div>
+                                        <span>Export CSV</span>
+                                    </button>
+                                </div>
+                                <div class="p-1 flex flex-col gap-0.5">
+                                    <button type="button" @click="showActionsDropdown = false; toggleBatchMode()" 
+                                            class="w-full flex items-center justify-between px-3 py-2 text-xs font-medium rounded-xl transition-colors text-left"
+                                            :class="batchMode ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 font-semibold' : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'">
+                                        <div class="flex items-center gap-2.5 min-w-0">
+                                            <div class="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
+                                                 :class="batchMode ? 'bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-200' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'">
+                                                <i :class="batchMode ? 'ph-bold ph-x' : 'ph-bold ph-checks'" class="text-xs"></i>
+                                            </div>
+                                            <span>Batch Select</span>
+                                        </div>
+                                        <span v-if="batchMode" class="text-[10px] bg-amber-200 dark:bg-amber-800/80 text-amber-800 dark:text-amber-200 px-1.5 py-0.5 rounded-full font-bold">ON</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Active Batch Mode Badges/Controls -->
+                        <template v-if="batchMode">
+                            <button @click="toggleBatchMode" 
+                                    class="h-9 px-3 rounded-lg bg-amber-100 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 font-semibold text-xs transition-colors shadow-xs flex items-center gap-1.5 shrink-0"
+                                    title="Exit batch selection">
+                                <i class="ph-bold ph-x text-xs"></i>
+                                <span>Cancel Batch</span>
+                            </button>
+                            <button v-if="selectedRows.length > 0" 
+                                    @click="deleteSelectedRows" 
+                                    :disabled="isBatchDeleting"
+                                    class="h-9 px-3.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium shadow-sm flex items-center gap-1.5 transition-all shrink-0 disabled:opacity-50">
+                                <i v-if="isBatchDeleting" class="ph ph-spinner animate-spin"></i>
+                                <i v-else class="ph-bold ph-trash"></i>
+                                <span>Delete ({% raw %}{{ selectedRows.length }}{% endraw %})</span>
+                            </button>
+                        </template>
+
+                        <!-- ER Map Button (Moved back down) -->
+                        <button @click="viewMode = (viewMode === 'erd' ? 'data' : 'erd')"
+                                :class="viewMode === 'erd' ? 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 font-semibold' : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 font-medium'"
+                                class="h-9 px-3.5 rounded-lg border text-sm transition-colors shadow-sm flex items-center gap-1.5 shrink-0"
+                                :title="viewMode === 'erd' ? 'Switch back to Data Grid' : 'Switch to Visual ER Diagram'">
+                            <i class="ph-bold ph-tree-structure text-indigo-500"></i>
+                            <span>{% raw %}{{ viewMode === 'erd' ? 'Data Grid' : 'ER Map' }}{% endraw %}</span>
+                        </button>
+
+                        <!-- Column Visibility & Reordering Dropdown -->
+                        {% include 'components/column_dropdown.html' %}
+
+                        <div class="w-px h-5 bg-slate-300 dark:bg-slate-700 mx-0.5 shrink-0"></div>
+
+                        <button @click="loadData(currentPage)" class="h-9 w-9 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-slate-200 transition-colors shadow-sm flex items-center justify-center shrink-0" title="Reload Data">
+                            <i class="ph-bold ph-arrow-counter-clockwise text-base" :class="{'animate-spin': dataLoading}"></i>
+                        </button>
+
+                        <!-- Search Input + Search Button Beside it -->
+                        <div class="relative shrink-0">
+                            <i class="ph ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                            <input v-model="searchQuery" 
+                                   @keyup.enter="loadData(1)" 
+                                   type="text" 
+                                   placeholder="Search rows..." 
+                                   class="h-9 pl-9 pr-7 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 w-44 sm:w-56 shadow-sm placeholder:text-slate-400 dark:placeholder:text-slate-500" />
+                            <button v-if="searchQuery" 
+                                    @click="searchQuery = ''; loadData(1)" 
+                                    class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5" 
+                                    title="Clear search">
+                                <i class="ph-bold ph-x text-xs"></i>
+                            </button>
+                        </div>
+                        <button @click="loadData(1)" class="h-9 px-3.5 rounded-lg bg-slate-800 dark:bg-slate-100 dark:text-slate-900 text-white text-sm font-medium hover:bg-slate-900 dark:hover:bg-white transition-colors shadow-sm flex items-center shrink-0">
+                            Search
+                        </button>
+                    </div>
+                </div>
 
             <!-- Active Filter Indicator -->
             <div v-if="activeFilter" class="flex items-center gap-2 px-6 py-2 bg-brand-50 dark:bg-brand-900/20 border-b border-slate-200 dark:border-slate-800 text-xs text-brand-700 dark:text-brand-400">
@@ -368,6 +442,7 @@
             </div>
 
         </div>
+        </template>
     </div>
 
     <!-- JSON / Text Inspector Modal -->
@@ -582,6 +657,43 @@
             const totalPages = ref(0);
             const searchQuery = ref('');
             const activeFilter = ref(null); // { column: 'id', value: '123' }
+            const showActionsDropdown = ref(false);
+            
+            // Responsive / Collapsible Search
+            const showSearchInput = ref(false);
+            const searchInputRef = ref(null);
+            const windowWidth = ref(window.innerWidth);
+
+            const handleWindowResize = () => {
+                windowWidth.value = window.innerWidth;
+            };
+            window.addEventListener('resize', handleWindowResize);
+
+            const isSearchCollapsible = Vue.computed(() => {
+                // If SQL console drawer is open, space is tight!
+                if (baseSetup.showSqlPanel?.value) return true;
+                // On screens narrower than 1280px
+                if (windowWidth.value < 1280) return true;
+                return false;
+            });
+
+            const isSearchOpen = Vue.computed(() => {
+                // Always keep open if user has an active query
+                if (searchQuery.value) return true;
+                // If user toggled it open
+                if (showSearchInput.value) return true;
+                // Otherwise open by default only if not in constrained space
+                return !isSearchCollapsible.value;
+            });
+
+            const openSearchInput = () => {
+                showSearchInput.value = true;
+                Vue.nextTick(() => {
+                    if (searchInputRef.value) {
+                        searchInputRef.value.focus();
+                    }
+                });
+            };
             
             // Sorting State
             const sortColumn = ref('');
@@ -867,6 +979,10 @@
                         setTimeout(() => { if(cmdJInput.value) cmdJInput.value.focus(); }, 50);
                     }
                     if (e.key === 'Escape') {
+                        if (showActionsDropdown.value) {
+                            showActionsDropdown.value = false;
+                            return;
+                        }
                         if (showColumnDropdown.value) {
                             showColumnDropdown.value = false;
                             return;
@@ -899,6 +1015,7 @@
                         tables.value = data.tables;
                         views.value = data.views || [];
                         schema.value = data.schema;
+                        erd.loadPositions();
                         
                         // Auto-size sidebar based on longest table name ONLY if user hasn't set/saved a preference
                         const visibleObjects = [...tables.value, ...views.value];
@@ -1116,6 +1233,15 @@
                 (colField) => isColumnPrimaryKey(colField)
             );
 
+            // Interactive ER Diagram Module
+            const erd = window.createErdModule(
+                Vue,
+                () => schema.value,
+                (tableName) => selectTable(tableName),
+                () => DBNAME,
+                baseSetup.showToast
+            );
+
             // Initialize
             Vue.onMounted(() => {
                 fetchSchema();
@@ -1128,6 +1254,8 @@
                 // Data Preview
                 activeTable, selectTable,
                 rows, dataLoading, currentPage, limit, totalRows, totalPages, searchQuery, activeFilter, loadData, clearFilter,
+                showActionsDropdown,
+                showSearchInput, searchInputRef, isSearchCollapsible, isSearchOpen, openSearchInput,
                 sortColumn, sortDirection, toggleSort, colWidths, startColResize, // Editing
                 cellEditModal, cellEditTextarea, startCellEdit, cancelCellEdit, saveCellEdit, cancelEdit: cancelCellEdit, saveCell: saveCellEdit, Math,
                 // Inspector Modal
@@ -1137,6 +1265,8 @@
                 deleteSelectedRows: () => batchSelection.deleteSelectedRows(baseSetup.customConfirm, baseSetup.showToast),
                 // Column Visibility & Reordering
                 ...columnManager,
+                // ER Diagram Module
+                ...erd,
                 // New Features
                 showAddRowModal, addRowData, isSavingRow, openAddRowModal, saveNewRow, deleteRow, exportCSV, teleport,
                 copyToClipboard, copiedCell, handleCellClick

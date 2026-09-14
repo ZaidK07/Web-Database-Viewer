@@ -283,8 +283,13 @@
             </div>
         </div>
 
+        <!-- ER Diagram View (when activeFile is loaded and viewMode === 'erd') -->
+        <div v-if="activeFile && viewMode === 'erd'" class="h-full w-full relative">
+            {% include 'components/schema_map.html' %}
+        </div>
+
         <!-- If No File Loaded: Empty State Landing -->
-        <div v-if="!activeFile" class="flex-1 flex items-center justify-center p-8">
+        <div v-else-if="!activeFile" class="flex-1 flex items-center justify-center p-8">
             <div class="max-w-md w-full bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-8 shadow-xl text-center flex flex-col items-center">
                 <div class="w-16 h-16 rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center mb-4">
                     <i class="ph-duotone ph-file-sql text-4xl"></i>
@@ -324,6 +329,9 @@
                     <button @click="openSqlConsole" class="px-3.5 py-1.5 bg-slate-800 dark:bg-slate-100 text-white dark:text-slate-900 rounded-xl text-xs font-semibold shadow-sm flex items-center gap-1.5">
                         <i class="ph-bold ph-terminal"></i> Run SQL Query
                     </button>
+                    <button @click="viewMode = 'erd'" class="px-3.5 py-1.5 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800/60 text-amber-800 dark:text-amber-300 rounded-xl text-xs font-semibold shadow-sm flex items-center gap-1.5 hover:bg-amber-100 dark:hover:bg-amber-900/60 transition-colors">
+                        <i class="ph-bold ph-tree-structure"></i> ER Diagram
+                    </button>
                     <a :href="'/api/sqlite/' + activeFile.id + '/download'" class="px-3.5 py-1.5 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                         <i class="ph-bold ph-download-simple"></i> Download File
                     </a>
@@ -332,55 +340,119 @@
         </div>
 
         <!-- Data Grid View when table selected -->
-        <div v-else class="h-full flex flex-col w-full bg-white dark:bg-slate-900 shadow-sm border-l border-slate-200 dark:border-slate-800 transition-colors duration-300">
+        <div v-else class="h-full flex flex-col w-full bg-white dark:bg-slate-900 shadow-sm border-l border-slate-200 dark:border-slate-800 transition-colors duration-300 min-w-0">
             <!-- Table Header Toolbar -->
             <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900 shrink-0">
-                <div>
-                    <div class="flex items-center gap-2">
-                        <h2 class="text-xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">{% raw %}{{ activeTable }}{% endraw %}</h2>
-                        <span class="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider"
-                              :class="views.includes(activeTable) ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' : 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400'">
-                            {% raw %}{{ views.includes(activeTable) ? 'View' : 'Table' }}{% endraw %}
-                        </span>
-                    </div>
+                <div class="flex items-center gap-3 min-w-0">
+                    <h2 class="text-xl font-bold text-slate-800 dark:text-slate-100 tracking-tight truncate max-w-[180px] sm:max-w-[260px] xl:max-w-[360px]" :title="activeTable">{% raw %}{{ activeTable }}{% endraw %}</h2>
+                    <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold shrink-0"
+                          :class="views.includes(activeTable) ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' : 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400'">
+                        {% raw %}{{ views.includes(activeTable) ? 'View' : 'Table' }}{% endraw %}
+                    </span>
                 </div>
 
-                <div class="flex items-center gap-3">
-                    <button @click="openInsertModal" class="h-9 px-3.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium transition-colors shadow-sm flex items-center gap-1.5">
-                        <i class="ph-bold ph-plus"></i> Add Row
+                <div class="flex items-center gap-2.5 shrink-0">
+                    <!-- Actions Custom Dropdown (Add Row, Export CSV, Batch Select) -->
+                    <div class="relative" id="sqlite-table-actions-menu">
+                        <div v-if="showActionsDropdown" class="fixed inset-0 z-30" @click="showActionsDropdown = false"></div>
+                        <button @click="showActionsDropdown = !showActionsDropdown"
+                                class="h-9 px-3.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 font-medium text-sm transition-all shadow-sm flex items-center gap-1.5 shrink-0 relative z-40"
+                                :class="{'border-amber-400 ring-1 ring-amber-400': showActionsDropdown}"
+                                title="Table actions">
+                            <i class="ph-bold ph-lightning text-amber-500"></i>
+                            <span>Actions</span>
+                            <i class="ph-bold ph-caret-down text-xs text-slate-400 transition-transform duration-200" :class="{'rotate-180': showActionsDropdown}"></i>
+                        </button>
+
+                        <!-- Dropdown Menu Panel -->
+                        <div v-if="showActionsDropdown" 
+                             class="absolute left-0 mt-1.5 w-52 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 z-40 p-1.5 divide-y divide-slate-100 dark:divide-slate-800 animate-in fade-in zoom-in-95 duration-150 flex flex-col">
+                            <div class="p-1 flex flex-col gap-0.5">
+                                <button type="button" @click="showActionsDropdown = false; openInsertModal()" 
+                                        class="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-amber-50 dark:hover:bg-amber-950/40 hover:text-amber-700 dark:hover:text-amber-300 rounded-xl transition-colors text-left">
+                                    <div class="w-6 h-6 rounded-lg bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 flex items-center justify-center shrink-0">
+                                        <i class="ph-bold ph-plus text-xs"></i>
+                                    </div>
+                                    <span>Add Row</span>
+                                </button>
+                                <a :href="'/api/sqlite/' + activeFile.id + '/table/' + encodeURIComponent(activeTable) + '/export/csv'" 
+                                   @click="showActionsDropdown = false"
+                                   class="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors text-left">
+                                    <div class="w-6 h-6 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 flex items-center justify-center shrink-0">
+                                        <i class="ph-bold ph-file-csv text-xs"></i>
+                                    </div>
+                                    <span>Export CSV</span>
+                                </a>
+                            </div>
+                            <div class="p-1 flex flex-col gap-0.5">
+                                <button type="button" @click="showActionsDropdown = false; toggleBatchMode()" 
+                                        class="w-full flex items-center justify-between px-3 py-2 text-xs font-medium rounded-xl transition-colors text-left"
+                                        :class="batchMode ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 font-semibold' : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'">
+                                    <div class="flex items-center gap-2.5 min-w-0">
+                                        <div class="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
+                                             :class="batchMode ? 'bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-200' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'">
+                                            <i :class="batchMode ? 'ph-bold ph-x' : 'ph-bold ph-checks'" class="text-xs"></i>
+                                        </div>
+                                        <span>Batch Select</span>
+                                    </div>
+                                    <span v-if="batchMode" class="text-[10px] bg-amber-200 dark:bg-amber-800/80 text-amber-800 dark:text-amber-200 px-1.5 py-0.5 rounded-full font-bold">ON</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Active Batch Mode Badges/Controls -->
+                    <template v-if="batchMode">
+                        <button @click="toggleBatchMode" 
+                                class="h-9 px-3 rounded-lg bg-amber-100 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 font-semibold text-xs transition-colors shadow-xs flex items-center gap-1.5 shrink-0"
+                                title="Exit batch selection">
+                            <i class="ph-bold ph-x text-xs"></i>
+                            <span>Cancel Batch</span>
+                        </button>
+                        <button v-if="selectedRows.length > 0" 
+                                @click="deleteSelectedRows" 
+                                :disabled="isBatchDeleting"
+                                class="h-9 px-3.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium shadow-sm flex items-center gap-1.5 transition-all shrink-0 disabled:opacity-50">
+                            <i v-if="isBatchDeleting" class="ph ph-spinner animate-spin"></i>
+                            <i v-else class="ph-bold ph-trash"></i>
+                            <span>Delete ({% raw %}{{ selectedRows.length }}{% endraw %})</span>
+                        </button>
+                    </template>
+
+                    <!-- ER Map Button (Moved back down) -->
+                    <button @click="viewMode = (viewMode === 'erd' ? 'data' : 'erd')"
+                            :class="viewMode === 'erd' ? 'bg-amber-50 dark:bg-amber-950/60 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 font-semibold' : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 font-medium'"
+                            class="h-9 px-3.5 rounded-lg border text-sm transition-colors shadow-sm flex items-center gap-1.5 shrink-0"
+                            :title="viewMode === 'erd' ? 'Switch back to Data Grid' : 'Switch to Visual ER Diagram'">
+                        <i class="ph-bold ph-tree-structure text-amber-500"></i>
+                        <span>{% raw %}{{ viewMode === 'erd' ? 'Data Grid' : 'ER Map' }}{% endraw %}</span>
                     </button>
-                    <a :href="'/api/sqlite/' + activeFile.id + '/table/' + encodeURIComponent(activeTable) + '/export/csv'" class="h-9 px-3.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-sm flex items-center gap-1.5">
-                        <i class="ph-bold ph-file-csv"></i> Export CSV
-                    </a>
 
                     <!-- Column Visibility & Reordering Dropdown -->
                     {% include 'components/column_dropdown.html' %}
 
-                    <!-- Batch Selection Controls -->
-                    <button @click="toggleBatchMode" 
-                            :class="batchMode ? 'bg-amber-100 dark:bg-amber-950/60 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 font-semibold' : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 font-medium'"
-                            class="h-9 px-3 rounded-lg border text-sm transition-colors shadow-sm flex items-center gap-1.5"
-                            :title="batchMode ? 'Exit batch selection' : 'Select multiple rows for batch actions'">
-                        <i :class="batchMode ? 'ph-bold ph-x text-xs' : 'ph-bold ph-checks'"></i>
-                        <span>{% raw %}{{ batchMode ? 'Cancel' : 'Batch Select' }}{% endraw %}</span>
-                    </button>
-                    <button v-if="batchMode && selectedRows.length > 0" 
-                            @click="deleteSelectedRows" 
-                            :disabled="isBatchDeleting"
-                            class="h-9 px-3.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-semibold shadow-sm flex items-center gap-1.5 transition-all animate-in fade-in zoom-in-95 disabled:opacity-50">
-                        <i v-if="isBatchDeleting" class="ph ph-spinner animate-spin"></i>
-                        <i v-else class="ph-bold ph-trash"></i>
-                        <span>Delete Selected ({% raw %}{{ selectedRows.length }}{% endraw %})</span>
-                    </button>
-                    <div class="w-px h-5 bg-slate-300 dark:bg-slate-700 mx-0.5"></div>
+                    <div class="w-px h-5 bg-slate-300 dark:bg-slate-700 mx-0.5 shrink-0"></div>
+
                     <button @click="fetchTableData" class="h-9 w-9 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-slate-200 transition-colors shadow-sm flex items-center justify-center shrink-0" title="Reload Data">
                         <i class="ph-bold ph-arrow-counter-clockwise text-base" :class="{'animate-spin': loadingData}"></i>
                     </button>
-                    <div class="relative">
-                        <i class="ph ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
-                        <input v-model="searchQuery" @keyup.enter="fetchTableData" type="text" placeholder="Search rows..." class="h-9 pl-9 pr-4 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-slate-200 rounded-lg text-sm focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 w-64 shadow-sm placeholder:text-slate-400 dark:placeholder:text-slate-500" />
+
+                    <!-- Search Input + Search Button Beside it -->
+                    <div class="relative shrink-0">
+                        <i class="ph ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                        <input v-model="searchQuery" 
+                               @keyup.enter="fetchTableData" 
+                               type="text" 
+                               placeholder="Search rows..." 
+                               class="h-9 pl-9 pr-7 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-slate-200 rounded-lg text-sm focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 w-44 sm:w-56 shadow-sm placeholder:text-slate-400 dark:placeholder:text-slate-500" />
+                        <button v-if="searchQuery" 
+                                @click="searchQuery = ''; fetchTableData()" 
+                                class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5" 
+                                title="Clear search">
+                            <i class="ph-bold ph-x text-xs"></i>
+                        </button>
                     </div>
-                    <button @click="fetchTableData" class="h-9 px-3.5 rounded-lg bg-slate-800 dark:bg-slate-100 dark:text-slate-900 text-white text-sm font-medium hover:bg-slate-900 dark:hover:bg-white transition-colors shadow-sm flex items-center">
+                    <button @click="fetchTableData" class="h-9 px-3.5 rounded-lg bg-slate-800 dark:bg-slate-100 dark:text-slate-900 text-white text-sm font-medium hover:bg-slate-900 dark:hover:bg-white transition-colors shadow-sm flex items-center shrink-0">
                         Search
                     </button>
                 </div>
@@ -733,6 +805,38 @@
         const sortDir = ref('ASC');
         const loadingData = ref(false);
         const tableError = ref('');
+        const showActionsDropdown = ref(false);
+
+        // Responsive / Collapsible Search
+        const showSearchInput = ref(false);
+        const searchInputRef = ref(null);
+        const windowWidth = ref(window.innerWidth);
+
+        const handleWindowResize = () => {
+            windowWidth.value = window.innerWidth;
+        };
+        window.addEventListener('resize', handleWindowResize);
+
+        const isSearchCollapsible = computed(() => {
+            if (baseSetup.showSqlPanel?.value) return true;
+            if (windowWidth.value < 1280) return true;
+            return false;
+        });
+
+        const isSearchOpen = computed(() => {
+            if (searchQuery.value) return true;
+            if (showSearchInput.value) return true;
+            return !isSearchCollapsible.value;
+        });
+
+        const openSearchInput = () => {
+            showSearchInput.value = true;
+            nextTick(() => {
+                if (searchInputRef.value) {
+                    searchInputRef.value.focus();
+                }
+            });
+        };
 
         const currentTableColumns = computed(() => {
             if (!activeTable.value || !schema.value[activeTable.value]) return [];
@@ -755,15 +859,6 @@
             const i = Math.floor(Math.log(bytes) / Math.log(k));
             return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
         };
-
-        // File input reference
-        const fileInput = ref(null);
-        const triggerFileUpload = () => fileInput.value?.click();
-
-        // Local path modal state
-        const showLocalPathModal = ref(false);
-        const localFilePathInput = ref('');
-        const localPathLoading = ref(false);
 
         // Upload dropdown state
         const showFileDropdown = ref(false);
@@ -818,6 +913,7 @@
                     tables.value = data.tables || [];
                     views.value = data.views || [];
                     schema.value = data.schema || {};
+                    erd.loadPositions();
                     // Auto select first table if none active or current activeTable is not in this db
                     const allDbObjects = [...(data.tables || []), ...(data.views || [])];
                     if ((!activeTable.value || !allDbObjects.includes(activeTable.value)) && data.tables && data.tables.length > 0) {
@@ -1296,11 +1392,24 @@
             (field) => currentPrimaryKeys.value.includes(field)
         );
 
+        // Interactive ER Diagram Module
+        const erd = window.createErdModule(
+            Vue,
+            () => schema.value,
+            (t) => selectSqliteTable(t),
+            () => (selectedFileId.value ? ('sqlite_' + selectedFileId.value) : ''),
+            baseSetup.showToast
+        );
+
         onMounted(() => {
             fetchFiles();
 
             window.addEventListener('keydown', (e) => {
                 if (e.key === 'Escape') {
+                    if (showActionsDropdown.value) {
+                        showActionsDropdown.value = false;
+                        return;
+                    }
                     if (showColumnDropdown.value) {
                         showColumnDropdown.value = false;
                         return;
@@ -1332,6 +1441,8 @@
             loadingSchema, schemaError, expandedSchema, toggleSchema,
             activeTable, rows, totalRows, currentPage, totalPages, pageLimit,
             searchQuery, sortCol, sortDir, loadingData, tableError,
+            showActionsDropdown,
+            showSearchInput, searchInputRef, isSearchCollapsible, isSearchOpen, openSearchInput,
             currentTableColumns, currentPrimaryKeys,
             selectSqliteTable, fetchTableData, sortBy, prevPage, nextPage,
             refreshCurrentDatabase,
@@ -1344,6 +1455,8 @@
             deleteSelectedRows: () => batchSelection.deleteSelectedRows(baseSetup.customConfirm, baseSetup.showToast),
             // Column Visibility & Reordering
             ...columnManager,
+            // ER Diagram Module
+            ...erd,
             copiedCell, isCHeld, copyToClipboard, handleCellClick,
             isDragging, fileInput, triggerFileUpload, handleFileInputChange, onDragOver, onDragLeave, onDrop,
             showFileDropdown, switchActiveFile,
