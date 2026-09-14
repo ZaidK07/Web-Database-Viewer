@@ -656,6 +656,11 @@
         const baseSetup = window.baseAppSetup();
 
         const openSqlConsole = () => {
+            if (activeFile.value) {
+                baseSetup.sqlDb.value = activeFile.value.id;
+            } else if (sqliteFiles.value.length > 0) {
+                baseSetup.sqlDb.value = sqliteFiles.value[0].id;
+            }
             baseSetup.showSqlPanel.value = true;
         };
 
@@ -683,11 +688,17 @@
             window.removeEventListener('mouseup', stopSqliteResize);
         };
 
-        // Files & database states
         const sqliteFiles = ref([]);
         const selectedFileId = ref('{{ initial_file_id }}' || localStorage.getItem('last_sqlite_file_id') || '');
         const activeFile = computed(() => sqliteFiles.value.find(f => f.id === selectedFileId.value) || null);
+        const searchFileQuery = ref('');
+        const filteredFiles = computed(() => {
+            if (!searchFileQuery.value) return sqliteFiles.value;
+            const q = searchFileQuery.value.toLowerCase();
+            return sqliteFiles.value.filter(f => f.original_name.toLowerCase().includes(q));
+        });
 
+        // Schema state
         const tables = ref([]);
         const views = ref([]);
         const schema = ref({});
@@ -742,6 +753,16 @@
             return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
         };
 
+        // File input reference
+        const fileInput = ref(null);
+        const triggerFileUpload = () => fileInput.value?.click();
+
+        // Local path modal state
+        const showLocalPathModal = ref(false);
+        const localFilePathInput = ref('');
+        const localPathLoading = ref(false);
+
+        // Upload dropdown state
         const showFileDropdown = ref(false);
 
         // Fetch uploaded files list
@@ -751,11 +772,13 @@
                 const data = await res.json();
                 if (data.success) {
                     sqliteFiles.value = data.files;
+                    baseSetup.dbList.value = data.files.map(f => ({ name: f.original_name, id: f.id }));
                     if (!selectedFileId.value && data.files.length > 0) {
                         selectedFileId.value = data.files[0].id;
                         localStorage.setItem('last_sqlite_file_id', data.files[0].id);
                     }
                     if (selectedFileId.value) {
+                        baseSetup.sqlDb.value = selectedFileId.value;
                         fetchSchema(selectedFileId.value);
                     }
                 }
@@ -769,6 +792,7 @@
             if (!file) return;
             showFileDropdown.value = false;
             selectedFileId.value = file.id;
+            baseSetup.sqlDb.value = file.id;
             localStorage.setItem('last_sqlite_file_id', file.id);
             activeTable.value = '';
             rows.value = [];

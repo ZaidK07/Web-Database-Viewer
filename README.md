@@ -56,7 +56,12 @@ Engineered with a modular Flask backend and a modern Vue 3 / Tailwind CSS reacti
 
 ### Interactive SQL Console
 * **Arbitrary Query Execution:** Run custom `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `JOIN`, or `CREATE` statements directly from your browser.
+* **Flexible Docking (Right Sidebar vs. Bottom Drawer):** Toggle console placement between a sleek right sidebar and an expansive bottom drawer with smooth CSS slide animations.
+* **Persistent Preference:** Console position preference (`right` or `bottom`) and database selection are automatically saved in `localStorage`.
+* **Dual-Pane Developer Workbench:** When docked at the bottom, the console automatically reorganizes into a two-column workspace: query editor on the left and full-height scrollable results table on the right.
 * **Dual Output Mode:** Automatically formats `SELECT` queries into an interactive tabular view, or displays affected row counts and execution status for DDL/DML queries.
+* **Keyboard Shortcuts:** `Ctrl+Enter` / `Cmd+Enter` to execute query instantly; `Escape` to close the console.
+* **Universal Database & SQLite Support:** Query MySQL, PostgreSQL, and standalone SQLite files seamlessly.
 * **Graceful Error Reporting:** Descriptive SQL execution error banners highlighting query syntax mistakes without crashing the app.
 
 ### Standalone SQLite Explorer
