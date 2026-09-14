@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Dynamic "Delete Selected (N)" action with confirmation modal and batch DELETE API endpoints for MySQL, PostgreSQL, and SQLite.
 - **Raw SQL Panel Docking**:
   - Toggle between Right Sidebar and Bottom Drawer layout positions with smooth slide transitions and persistent preference.
+- **Column Visibility & Reordering**:
+  - Clever, minimal, non-polluting "Columns" toolbar dropdown with real-time column search filtering.
+  - Checkbox toggles to selectively show or hide columns (ideal for wide tables with 25+ columns).
+  - Quick action shortcuts: "Show All", "Only PKs", and "Reset".
+  - Column reordering via single-click Up / Down caret buttons and HTML5 drag-and-drop.
+  - Per-table preference persistence in `localStorage` preserving hidden state and ordering across sessions.
 - Comprehensive open-source documentation suite:
   - Insanely detailed `README.md` with system architecture and full API reference.
   - `CONTRIBUTING.md` guide for open-source contributors.

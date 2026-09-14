@@ -257,3 +257,228 @@ window.createBatchSelectionModule = function(Vue, rowsRef, getPrimaryKeys, onDel
     };
 };
 
+window.createColumnManagerModule = function(Vue, allColumnsGetter, getStorageKey, isPkGetter) {
+    const showColumnDropdown = Vue.ref(false);
+    const columnSearch = Vue.ref('');
+    const hiddenColumns = Vue.ref([]);
+    const customColumnOrder = Vue.ref([]);
+
+    const draggedColField = Vue.ref(null);
+    const isColDragging = Vue.ref(false);
+
+    const allColumns = Vue.computed(() => {
+        if (typeof allColumnsGetter === 'function') {
+            return allColumnsGetter() || [];
+        }
+        return (allColumnsGetter && allColumnsGetter.value) || [];
+    });
+
+    const isColumnPrimaryKey = function(field) {
+        if (typeof isPkGetter === 'function') return isPkGetter(field);
+        const col = allColumns.value.find(c => c.Field === field);
+        return col ? (col.Key === 'PRI' || col.pk === 1) : false;
+    };
+
+    const orderedColumns = Vue.computed(() => {
+        const rawCols = allColumns.value;
+        if (!rawCols || rawCols.length === 0) return [];
+        if (!customColumnOrder.value || customColumnOrder.value.length === 0) return rawCols;
+
+        const colMap = new Map();
+        rawCols.forEach(c => colMap.set(c.Field, c));
+
+        const result = [];
+        customColumnOrder.value.forEach(field => {
+            if (colMap.has(field)) {
+                result.push(colMap.get(field));
+                colMap.delete(field);
+            }
+        });
+        // Append any unlisted / new columns
+        colMap.forEach(c => result.push(c));
+        return result;
+    });
+
+    const visibleColumns = Vue.computed(() => {
+        const hiddenSet = new Set(hiddenColumns.value);
+        return orderedColumns.value.filter(c => !hiddenSet.has(c.Field));
+    });
+
+    const filteredColumnList = Vue.computed(() => {
+        const list = orderedColumns.value;
+        if (!columnSearch.value) return list;
+        const q = columnSearch.value.toLowerCase().trim();
+        return list.filter(c => c.Field.toLowerCase().includes(q) || (c.Type && c.Type.toLowerCase().includes(q)));
+    });
+
+    const hiddenCount = Vue.computed(() => hiddenColumns.value.length);
+    const visibleCount = Vue.computed(() => visibleColumns.value.length);
+    const totalCount = Vue.computed(() => allColumns.value.length);
+
+    const isColumnVisible = function(field) {
+        return !hiddenColumns.value.includes(field);
+    };
+
+    const saveSettings = function() {
+        if (typeof getStorageKey !== 'function') return;
+        const key = getStorageKey();
+        if (!key) return;
+        try {
+            const data = {
+                hidden: hiddenColumns.value,
+                order: customColumnOrder.value
+            };
+            localStorage.setItem('col_prefs_' + key, JSON.stringify(data));
+        } catch (e) {
+            console.error('Failed to save column preferences:', e);
+        }
+    };
+
+    const loadSettings = function() {
+        if (typeof getStorageKey !== 'function') return;
+        const key = getStorageKey();
+        if (!key) return;
+        try {
+            const raw = localStorage.getItem('col_prefs_' + key);
+            if (raw) {
+                const data = JSON.parse(raw);
+                hiddenColumns.value = Array.isArray(data.hidden) ? data.hidden : [];
+                customColumnOrder.value = Array.isArray(data.order) ? data.order : [];
+            } else {
+                hiddenColumns.value = [];
+                customColumnOrder.value = [];
+            }
+        } catch (e) {
+            hiddenColumns.value = [];
+            customColumnOrder.value = [];
+        }
+    };
+
+    const toggleColumn = function(field) {
+        const idx = hiddenColumns.value.indexOf(field);
+        if (idx > -1) {
+            hiddenColumns.value.splice(idx, 1);
+        } else {
+            // Prevent hiding the last visible column
+            if (visibleColumns.value.length <= 1 && isColumnVisible(field)) {
+                return;
+            }
+            hiddenColumns.value.push(field);
+        }
+        saveSettings();
+    };
+
+    const showAllColumns = function() {
+        hiddenColumns.value = [];
+        saveSettings();
+    };
+
+    const hideAllColumns = function() {
+        // Keep only primary keys or the first column visible
+        const pkFields = allColumns.value.filter(c => isColumnPrimaryKey(c.Field)).map(c => c.Field);
+        const keepFields = pkFields.length > 0 ? pkFields : (allColumns.value.length > 0 ? [allColumns.value[0].Field] : []);
+        hiddenColumns.value = allColumns.value.filter(c => !keepFields.includes(c.Field)).map(c => c.Field);
+        saveSettings();
+    };
+
+    const ensureCustomOrder = function() {
+        if (!customColumnOrder.value || customColumnOrder.value.length === 0) {
+            customColumnOrder.value = orderedColumns.value.map(c => c.Field);
+        }
+    };
+
+    const moveColumnUp = function(field) {
+        ensureCustomOrder();
+        const idx = customColumnOrder.value.indexOf(field);
+        if (idx > 0) {
+            const temp = customColumnOrder.value[idx - 1];
+            customColumnOrder.value[idx - 1] = customColumnOrder.value[idx];
+            customColumnOrder.value[idx] = temp;
+            saveSettings();
+        }
+    };
+
+    const moveColumnDown = function(field) {
+        ensureCustomOrder();
+        const idx = customColumnOrder.value.indexOf(field);
+        if (idx > -1 && idx < customColumnOrder.value.length - 1) {
+            const temp = customColumnOrder.value[idx + 1];
+            customColumnOrder.value[idx + 1] = customColumnOrder.value[idx];
+            customColumnOrder.value[idx] = temp;
+            saveSettings();
+        }
+    };
+
+    const resetColumns = function() {
+        hiddenColumns.value = [];
+        customColumnOrder.value = [];
+        if (typeof getStorageKey === 'function') {
+            const key = getStorageKey();
+            if (key) {
+                try { localStorage.removeItem('col_prefs_' + key); } catch(e) {}
+            }
+        }
+    };
+
+    // Drag and drop reordering
+    const onColDragStart = function(e, field) {
+        draggedColField.value = field;
+        isColDragging.value = true;
+        if (e.dataTransfer) {
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', field);
+        }
+    };
+
+    const onColDragOver = function(e, targetField) {
+        if (!draggedColField.value || draggedColField.value === targetField) return;
+        ensureCustomOrder();
+        const fromIdx = customColumnOrder.value.indexOf(draggedColField.value);
+        const toIdx = customColumnOrder.value.indexOf(targetField);
+        if (fromIdx > -1 && toIdx > -1) {
+            customColumnOrder.value.splice(fromIdx, 1);
+            customColumnOrder.value.splice(toIdx, 0, draggedColField.value);
+        }
+    };
+
+    const onColDrop = function(e, targetField) {
+        saveSettings();
+    };
+
+    const onColDragEnd = function() {
+        draggedColField.value = null;
+        isColDragging.value = false;
+        saveSettings();
+    };
+
+    return {
+        showColumnDropdown,
+        columnSearch,
+        hiddenColumns,
+        customColumnOrder,
+        allColumns,
+        orderedColumns,
+        visibleColumns,
+        filteredColumnList,
+        hiddenCount,
+        visibleCount,
+        totalCount,
+        isColumnVisible,
+        isColumnPrimaryKey,
+        toggleColumn,
+        showAllColumns,
+        hideAllColumns,
+        moveColumnUp,
+        moveColumnDown,
+        resetColumns,
+        loadSettings,
+        saveSettings,
+        draggedColField,
+        isColDragging,
+        onColDragStart,
+        onColDragOver,
+        onColDrop,
+        onColDragEnd
+    };
+};
+

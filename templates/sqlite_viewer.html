@@ -353,6 +353,9 @@
                         <i class="ph-bold ph-file-csv"></i> Export CSV
                     </a>
 
+                    <!-- Column Visibility & Reordering Dropdown -->
+                    {% include 'components/column_dropdown.html' %}
+
                     <!-- Batch Selection Controls -->
                     <button @click="toggleBatchMode" 
                             :class="batchMode ? 'bg-amber-100 dark:bg-amber-950/60 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 font-semibold' : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 font-medium'"
@@ -405,7 +408,7 @@
                             <th class="px-4 py-3 font-semibold text-slate-700 dark:text-slate-300 border-b-2 border-r border-slate-300 dark:border-slate-700 bg-slate-100/90 dark:bg-slate-800 w-16 text-center">
                                 Actions
                             </th>
-                            <th v-for="col in currentTableColumns" :key="col.Field"
+                            <th v-for="col in visibleColumns" :key="col.Field"
                                 class="px-4 py-3 font-semibold text-slate-700 dark:text-slate-300 border-b-2 border-r border-slate-300 dark:border-slate-700 bg-slate-100/90 dark:bg-slate-800 whitespace-nowrap relative group/th last:border-r-0"
                                 :style="{ width: (colWidths[col.Field] || 200) + 'px' }">
                                 <!-- Col Resizer -->
@@ -449,7 +452,7 @@
                                 </button>
                             </td>
                             <!-- Data Columns -->
-                            <td v-for="col in currentTableColumns" :key="col.Field"
+                            <td v-for="col in visibleColumns" :key="col.Field"
                                 @click="handleCellClick($event, row[col.Field], index, col.Field)"
                                 class="px-4 py-2 border-r border-slate-200 dark:border-slate-800 last:border-r-0 relative group/cell cursor-pointer">
                                 
@@ -875,6 +878,7 @@
             sortDir.value = 'ASC';
             colWidths.value = {};
             batchSelection.clearSelection();
+            columnManager.loadSettings();
             cancelCellEdit();
             fetchTableData();
         };
@@ -1284,11 +1288,23 @@
             }
         );
 
+        // Column Visibility & Reordering Module
+        const columnManager = window.createColumnManagerModule(
+            Vue,
+            () => currentTableColumns.value,
+            () => (activeTable.value && selectedFileId.value ? ('sqlite_' + selectedFileId.value + '_' + activeTable.value) : ''),
+            (field) => currentPrimaryKeys.value.includes(field)
+        );
+
         onMounted(() => {
             fetchFiles();
 
             window.addEventListener('keydown', (e) => {
                 if (e.key === 'Escape') {
+                    if (showColumnDropdown.value) {
+                        showColumnDropdown.value = false;
+                        return;
+                    }
                     if (inspectorModal.value.open) {
                         closeInspector();
                         return;
@@ -1326,6 +1342,8 @@
             // Batch Selection
             ...batchSelection,
             deleteSelectedRows: () => batchSelection.deleteSelectedRows(baseSetup.customConfirm, baseSetup.showToast),
+            // Column Visibility & Reordering
+            ...columnManager,
             copiedCell, isCHeld, copyToClipboard, handleCellClick,
             isDragging, fileInput, triggerFileUpload, handleFileInputChange, onDragOver, onDragLeave, onDrop,
             showFileDropdown, switchActiveFile,
