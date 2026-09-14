@@ -196,6 +196,19 @@ def mutate_row(profile_name, dbname, tablename):
                 inserted_id = adapter.inserted_id(cursor, primary_keys)
                 conn.commit()
                 return jsonify(success=True, lastrowid=inserted_id)
+            if request.method == 'DELETE':
+                batch_rows = data.get('rows')
+                if isinstance(batch_rows, list) and batch_rows:
+                    total_affected = 0
+                    for row_pks in batch_rows:
+                        if not row_pks or any(k not in valid for k in row_pks):
+                            continue
+                        where = ' AND '.join(f'{adapter.quote(k)} = %s' for k in row_pks)
+                        cursor.execute(f'DELETE FROM {table_ref} WHERE {where}', list(row_pks.values()))
+                        total_affected += cursor.rowcount
+                    conn.commit()
+                    return jsonify(success=True, affected_rows=total_affected)
+
             primary_keys = data.get('primary_keys') or {}
             if not primary_keys or any(k not in valid for k in primary_keys):
                 return api_error('Valid primary keys are required', 400)

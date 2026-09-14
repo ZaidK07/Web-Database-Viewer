@@ -44,7 +44,9 @@ Engineered with a modular Flask backend and a modern Vue 3 / Tailwind CSS reacti
 ### Interactive Data Grid and Table Viewer
 * **High-Performance Pagination:** Dynamically paginate through hundreds of thousands of records with configurable page sizes (25, 50, 100, 250 rows).
 * **Column Sorting and Instant Search:** Sort ascending/descending by clicking table headers; execute real-time keyword search across all indexed columns.
-* **Inline CRUD Operations:** Edit cell values or insert new records directly through modal and inline editors with primary key safety checks.
+* **Dedicated Cell Editor Modal:** Double-click cell editing in an intuitive modal with "Set to NULL" toggle, character counter, and keyboard shortcuts (`Cmd/Ctrl+Enter` to save, `Esc` to cancel).
+* **Value Inspector Modal (JSON & Text):** Hover over cells with JSON or long text to open a dedicated syntax-highlighted code inspector with Formatted/Raw toggle, character/line counts, one-click clipboard copy, and quick edit shortcut.
+* **Batch Row Deletion (Selection Mode):** Toggleable multi-row selection mode that displays checkboxes on demand without cluttering the normal view, complete with "Select All" header toggle, row selection highlights, and a batch "Delete Selected (N)" confirmation action.
 * **Foreign Key Badges:** Automatically inspects schema constraints and highlights relational foreign keys with reference tooltips.
 
 ### Comprehensive Schema and Relationship Inspector

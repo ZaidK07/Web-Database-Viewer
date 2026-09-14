@@ -352,6 +352,23 @@
                     <a :href="'/api/sqlite/' + activeFile.id + '/table/' + encodeURIComponent(activeTable) + '/export/csv'" class="h-9 px-3.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-sm flex items-center gap-1.5">
                         <i class="ph-bold ph-file-csv"></i> Export CSV
                     </a>
+
+                    <!-- Batch Selection Controls -->
+                    <button @click="toggleBatchMode" 
+                            :class="batchMode ? 'bg-amber-100 dark:bg-amber-950/60 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 font-semibold' : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 font-medium'"
+                            class="h-9 px-3 rounded-lg border text-sm transition-colors shadow-sm flex items-center gap-1.5"
+                            :title="batchMode ? 'Exit batch selection' : 'Select multiple rows for batch actions'">
+                        <i :class="batchMode ? 'ph-bold ph-x text-xs' : 'ph-bold ph-checks'"></i>
+                        <span>{% raw %}{{ batchMode ? 'Cancel' : 'Batch Select' }}{% endraw %}</span>
+                    </button>
+                    <button v-if="batchMode && selectedRows.length > 0" 
+                            @click="deleteSelectedRows" 
+                            :disabled="isBatchDeleting"
+                            class="h-9 px-3.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-semibold shadow-sm flex items-center gap-1.5 transition-all animate-in fade-in zoom-in-95 disabled:opacity-50">
+                        <i v-if="isBatchDeleting" class="ph ph-spinner animate-spin"></i>
+                        <i v-else class="ph-bold ph-trash"></i>
+                        <span>Delete Selected ({% raw %}{{ selectedRows.length }}{% endraw %})</span>
+                    </button>
                     <div class="w-px h-5 bg-slate-300 dark:bg-slate-700 mx-0.5"></div>
                     <button @click="fetchTableData" class="h-9 w-9 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-slate-200 transition-colors shadow-sm flex items-center justify-center shrink-0" title="Reload Data">
                         <i class="ph-bold ph-arrow-counter-clockwise text-base" :class="{'animate-spin': loadingData}"></i>
@@ -382,6 +399,9 @@
                 <table v-else-if="rows.length > 0" class="data-table text-sm text-left">
                     <thead class="bg-slate-100/80 dark:bg-slate-800 sticky top-0 z-10 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
                         <tr>
+                            <th v-if="batchMode" class="w-10 px-3 py-3 border-b-2 border-r border-slate-300 dark:border-slate-700 bg-slate-100/90 dark:bg-slate-800 text-center">
+                                <input type="checkbox" :checked="isAllSelected" @change="toggleSelectAll" class="rounded border-slate-300 text-amber-600 focus:ring-amber-500 dark:border-slate-700 dark:bg-slate-800 cursor-pointer" title="Select All" />
+                            </th>
                             <th class="px-4 py-3 font-semibold text-slate-700 dark:text-slate-300 border-b-2 border-r border-slate-300 dark:border-slate-700 bg-slate-100/90 dark:bg-slate-800 w-16 text-center">
                                 Actions
                             </th>
@@ -413,7 +433,15 @@
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-200 dark:divide-slate-800">
-                        <tr v-for="(row, index) in rows" :key="index" class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors group">
+                        <tr v-for="(row, index) in rows" :key="index" 
+                            :class="[
+                                isRowSelected(index) ? 'bg-amber-50/70 dark:bg-amber-950/25' : 'hover:bg-slate-50 dark:hover:bg-slate-800/40',
+                                'transition-colors group'
+                            ]">
+                            <!-- Batch Checkbox Column -->
+                            <td v-if="batchMode" class="w-10 px-3 py-2 border-r border-slate-200 dark:border-slate-800 text-center" @click.stop>
+                                <input type="checkbox" :checked="isRowSelected(index)" @change="toggleRowSelection(index)" class="rounded border-slate-300 text-amber-600 focus:ring-amber-500 dark:border-slate-700 dark:bg-slate-800 cursor-pointer" />
+                            </td>
                             <!-- Actions Column -->
                             <td class="px-4 py-2 border-r border-slate-200 dark:border-slate-800 text-center">
                                 <button @click="confirmDeleteRow(row)" class="text-slate-400 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 transition-colors" title="Delete Row">
@@ -822,6 +850,7 @@
             sortCol.value = '';
             sortDir.value = 'ASC';
             colWidths.value = {};
+            batchSelection.clearSelection();
             cancelCellEdit();
             fetchTableData();
         };
@@ -830,6 +859,7 @@
             if (!selectedFileId.value || !activeTable.value) return;
             loadingData.value = true;
             tableError.value = '';
+            batchSelection.clearSelection();
             try {
                 let url = `/api/sqlite/${selectedFileId.value}/table/${encodeURIComponent(activeTable.value)}/data?page=${currentPage.value}&limit=${pageLimit.value}`;
                 if (searchQuery.value) url += `&search=${encodeURIComponent(searchQuery.value)}`;
@@ -1214,6 +1244,22 @@
         );
         const { inspectorModal, closeInspector } = inspector;
 
+        // Batch Selection Module
+        const batchSelection = window.createBatchSelectionModule(
+            Vue,
+            rows,
+            () => (currentPrimaryKeys.value || []),
+            () => { fetchTableData(); },
+            async (pkList) => {
+                const res = await fetch(`/api/sqlite/${selectedFileId.value}/table/${encodeURIComponent(activeTable.value)}/row`, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ rows: pkList })
+                });
+                return await res.json();
+            }
+        );
+
         onMounted(() => {
             fetchFiles();
 
@@ -1253,6 +1299,9 @@
             cellEditModal, cellEditTextarea, startCellEdit, cancelCellEdit, saveCellEdit, cancelEdit: cancelCellEdit, saveCell: saveCellEdit,
             // Inspector Modal
             ...inspector,
+            // Batch Selection
+            ...batchSelection,
+            deleteSelectedRows: () => batchSelection.deleteSelectedRows(baseSetup.customConfirm, baseSetup.showToast),
             copiedCell, isCHeld, copyToClipboard, handleCellClick,
             isDragging, fileInput, triggerFileUpload, handleFileInputChange, onDragOver, onDragLeave, onDrop,
             showFileDropdown, switchActiveFile,

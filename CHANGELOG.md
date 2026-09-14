@@ -10,6 +10,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Value Inspector Modal**: Dedicated inspection modal for table cells containing JSON or lengthy text:
+  - Formatted vs. Raw view toggle with automatic JSON indentation and syntax highlighting.
+  - Line count, character count, and single-click copy to clipboard.
+  - Quick transition to Cell Editor Modal for immediate editing.
+- **Dedicated Cell Edit Modal**: Replaced inline table editing with a focused modal:
+  - Supports text, multiline JSON/blobs, and explicit `NULL` value setting.
+  - Column metadata display (type, nullability, key status).
+- **Batch Row Deletion**:
+  - Non-polluting "Batch Select" toolbar toggle to activate/deactivate multi-row selection mode without visual clutter.
+  - Master "Select All" checkbox and per-row checkboxes with visual row highlight.
+  - Dynamic "Delete Selected (N)" action with confirmation modal and batch DELETE API endpoints for MySQL, PostgreSQL, and SQLite.
+- **Raw SQL Panel Docking**:
+  - Toggle between Right Sidebar and Bottom Drawer layout positions with smooth slide transitions and persistent preference.
 - Comprehensive open-source documentation suite:
   - Insanely detailed `README.md` with system architecture and full API reference.
   - `CONTRIBUTING.md` guide for open-source contributors.
@@ -17,6 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `SECURITY.md` deployment best practices and vulnerability disclosure policy.
   - GitHub issue templates (`bug_report.md`, `feature_request.md`) and pull request template.
 - GNU General Public License v3.0 (`LICENSE`).
+
+### Changed
+- Refactored frontend logic into reusable modules:
+  - `static/js/viewer-utils.js`: Shared Value Inspector and Batch Selection controller modules.
+  - `templates/components/inspector_modal.html`: Shared Jinja partial for the value inspector modal.
 
 ### Fixed
 - Fixed `ModuleNotFoundError: No module named 'routes.profiles'` by creating `routes/profiles.py` and `services/profiles.py`.

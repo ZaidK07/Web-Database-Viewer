@@ -142,3 +142,118 @@ window.createInspectorModule = function(Vue, getIsPk, onEdit) {
         isColumnPrimaryKey
     };
 };
+
+window.createBatchSelectionModule = function(Vue, rowsRef, getPrimaryKeys, onDeleteSuccess, executeDelete) {
+    const batchMode = Vue.ref(false);
+    const selectedRows = Vue.ref([]);
+    const isBatchDeleting = Vue.ref(false);
+
+    const toggleBatchMode = function() {
+        batchMode.value = !batchMode.value;
+        if (!batchMode.value) {
+            selectedRows.value = [];
+        }
+    };
+
+    const clearSelection = function() {
+        selectedRows.value = [];
+    };
+
+    const isRowSelected = function(index) {
+        return selectedRows.value.includes(index);
+    };
+
+    const toggleRowSelection = function(index) {
+        const pos = selectedRows.value.indexOf(index);
+        if (pos > -1) {
+            selectedRows.value.splice(pos, 1);
+        } else {
+            selectedRows.value.push(index);
+        }
+    };
+
+    const isAllSelected = Vue.computed(function() {
+        const r = rowsRef.value;
+        if (!r || r.length === 0) return false;
+        return r.every((_, idx) => selectedRows.value.includes(idx));
+    });
+
+    const toggleSelectAll = function() {
+        const r = rowsRef.value;
+        if (!r || r.length === 0) return;
+        if (isAllSelected.value) {
+            selectedRows.value = [];
+        } else {
+            selectedRows.value = r.map((_, idx) => idx);
+        }
+    };
+
+    const deleteSelectedRows = async function(customConfirm, showToast) {
+        if (!selectedRows.value.length) return;
+        const count = selectedRows.value.length;
+        const pks = getPrimaryKeys();
+
+        if (!pks || !pks.length) {
+            if (typeof showToast === 'function') {
+                showToast('Cannot delete rows: Table has no Primary Key defined.', 'error');
+            }
+            return;
+        }
+
+        let confirmed = true;
+        if (typeof customConfirm === 'function') {
+            confirmed = await customConfirm(
+                'Delete Selected Records',
+                `Are you sure you want to permanently delete ${count} selected records? This action cannot be undone.`,
+                true
+            );
+        }
+
+        if (!confirmed) return;
+
+        const currentRows = rowsRef.value;
+        const pkList = selectedRows.value.map(idx => {
+            const rowData = currentRows[idx];
+            const rowPk = {};
+            pks.forEach(pk => { rowPk[pk] = rowData[pk]; });
+            return rowPk;
+        });
+
+        isBatchDeleting.value = true;
+        try {
+            const res = await executeDelete(pkList);
+            if (res && res.error) {
+                if (typeof showToast === 'function') showToast(res.error, 'error');
+            } else {
+                const affected = (res && res.affected_rows !== undefined) ? res.affected_rows : count;
+                if (typeof showToast === 'function') {
+                    showToast(`Successfully deleted ${affected} records`);
+                }
+                clearSelection();
+                if (typeof onDeleteSuccess === 'function') {
+                    onDeleteSuccess();
+                }
+            }
+        } catch (e) {
+            if (typeof showToast === 'function') {
+                showToast('Error deleting selected rows', 'error');
+            }
+        } finally {
+            isBatchDeleting.value = false;
+        }
+    };
+
+    return {
+        batchMode,
+        selectedRows,
+        isBatchDeleting,
+        toggleBatchMode,
+        clearSelection,
+        isRowSelected,
+        toggleRowSelection,
+        isAllSelected,
+        toggleSelectAll,
+        deleteSelectedRows
+    };
+};
+
