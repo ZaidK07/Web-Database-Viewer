@@ -429,6 +429,14 @@
                                     <span v-if="row[col.Field] === null" class="text-slate-300 dark:text-slate-600 italic font-mono text-xs">NULL</span>
                                     <span v-else>{% raw %}{{ row[col.Field] }}{% endraw %}</span>
                                 </div>
+
+                                <!-- Quick Inspect Button on Hover -->
+                                <button v-if="isInspectable(row[col.Field])" 
+                                        @click.stop="openInspector(row[col.Field], col.Field, index)"
+                                        class="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover/cell:opacity-100 w-6 h-6 rounded-md bg-white/95 dark:bg-slate-800/95 hover:bg-amber-50 dark:hover:bg-amber-950/60 text-slate-500 hover:text-amber-600 dark:text-slate-400 dark:hover:text-amber-400 border border-slate-200 dark:border-slate-700 shadow-xs flex items-center justify-center transition-all z-10" 
+                                        title="Inspect formatted text / JSON">
+                                    <i class="ph-bold ph-code text-xs"></i>
+                                </button>
                             </td>
                         </tr>
                     </tbody>
@@ -469,6 +477,77 @@
                             <i class="ph-bold ph-caret-right"></i>
                         </button>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JSON / Text Inspector Modal -->
+    <div v-if="inspectorModal.open" @keydown.esc.stop="closeInspector" class="fixed inset-0 z-[70] flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-slate-900/50 dark:bg-slate-950/70 backdrop-blur-sm" @click="closeInspector"></div>
+        <div class="relative bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-150">
+            <!-- Header -->
+            <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-xl bg-amber-50 dark:bg-amber-950/60 flex items-center justify-center text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60">
+                        <i class="ph-bold ph-code text-lg"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                            Value Inspector
+                            <span class="text-xs font-mono font-medium px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">{% raw %}{{ inspectorModal.colField }}{% endraw %}</span>
+                            <span v-if="inspectorModal.isJson" class="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">JSON</span>
+                        </h3>
+                        <p class="text-[11px] text-slate-400 dark:text-slate-500">
+                            {% raw %}{{ inspectorModal.rawText.length }}{% endraw %} characters • {% raw %}{{ inspectorModal.lineCount }}{% endraw %} lines
+                        </p>
+                    </div>
+                </div>
+                
+                <div class="flex items-center gap-2">
+                    <!-- Mode Toggles (Formatted vs Raw) -->
+                    <div v-if="inspectorModal.isJson" class="flex items-center bg-slate-200/70 dark:bg-slate-800 p-0.5 rounded-lg text-xs font-medium">
+                        <button @click="inspectorModal.viewMode = 'formatted'" 
+                                :class="inspectorModal.viewMode === 'formatted' ? 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-xs' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'"
+                                class="px-2.5 py-1 rounded-md transition-all">Formatted</button>
+                        <button @click="inspectorModal.viewMode = 'raw'" 
+                                :class="inspectorModal.viewMode === 'raw' ? 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-xs' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'"
+                                class="px-2.5 py-1 rounded-md transition-all">Raw</button>
+                    </div>
+
+                    <!-- Copy Button -->
+                    <button @click="copyInspectorContent" class="h-8 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-medium flex items-center gap-1.5 transition-colors shadow-xs">
+                        <i :class="inspectorModal.copied ? 'ph-bold ph-check text-green-500' : 'ph ph-copy'"></i>
+                        <span>{% raw %}{{ inspectorModal.copied ? 'Copied!' : 'Copy' }}{% endraw %}</span>
+                    </button>
+
+                    <button @click="closeInspector" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800">
+                        <i class="ph-bold ph-x text-lg"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Body -->
+            <div class="flex-1 overflow-auto p-4 bg-slate-900 text-slate-100 font-mono text-xs leading-relaxed select-text">
+                <pre v-if="inspectorModal.viewMode === 'formatted' && inspectorModal.isJson" 
+                     v-html="inspectorModal.highlightedHtml" 
+                     class="overflow-x-auto whitespace-pre p-2"></pre>
+                <pre v-else class="overflow-x-auto whitespace-pre-wrap break-words p-2 text-slate-200">{% raw %}{{ inspectorModal.rawText }}{% endraw %}</pre>
+            </div>
+
+            <!-- Footer -->
+            <div class="px-6 py-3.5 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex items-center justify-between">
+                <span class="text-xs text-slate-400">Press <kbd class="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-[10px] font-mono">Esc</kbd> to close</span>
+                <div class="flex items-center gap-2">
+                    <button v-if="inspectorModal.rowIndex !== -1 && !isColumnPrimaryKey(inspectorModal.colField)" 
+                            @click="editFromInspector" 
+                            class="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-medium text-xs flex items-center gap-1.5 shadow-xs">
+                        <i class="ph-bold ph-pencil-simple text-sm"></i>
+                        Edit Value
+                    </button>
+                    <button @click="closeInspector" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 dark:bg-slate-100 dark:hover:bg-white text-white dark:text-slate-900 font-bold text-xs transition-colors shadow-xs">
+                        Done
+                    </button>
                 </div>
             </div>
         </div>
@@ -1191,13 +1270,147 @@
             }
         };
 
+        // Inspector Modal State & Methods
+        const inspectorModal = ref({
+            open: false,
+            colField: '',
+            rowIndex: -1,
+            originalValue: null,
+            rawText: '',
+            isJson: false,
+            viewMode: 'formatted',
+            highlightedHtml: '',
+            lineCount: 1,
+            copied: false
+        });
+
+        const isColumnPrimaryKey = (colField) => {
+            return (currentPrimaryKeys.value || []).includes(colField);
+        };
+
+        const isInspectable = (val) => {
+            if (val === null || val === undefined) return false;
+            if (typeof val === 'object') return true;
+            const str = String(val).trim();
+            if (str.length > 35) return true;
+            if ((str.startsWith('{') && str.endsWith('}')) || (str.startsWith('[') && str.endsWith(']'))) return true;
+            return false;
+        };
+
+        const highlightJson = (jsonStr) => {
+            if (!jsonStr) return '';
+            const escaped = jsonStr
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+            return escaped.replace(
+                /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+                (match) => {
+                    let cls = 'text-amber-400';
+                    if (/^"/.test(match)) {
+                        if (/:$/.test(match)) {
+                            cls = 'text-sky-400 font-semibold';
+                        } else {
+                            cls = 'text-emerald-400';
+                        }
+                    } else if (/true|false/.test(match)) {
+                        cls = 'text-indigo-400 font-bold';
+                    } else if (/null/.test(match)) {
+                        cls = 'text-rose-400 italic';
+                    }
+                    return `<span class="${cls}">${match}</span>`;
+                }
+            );
+        };
+
+        const openInspector = (val, colField, rowIndex = -1) => {
+            let raw = '';
+            let isJson = false;
+            let formatted = '';
+
+            if (val === null || val === undefined) {
+                raw = '';
+            } else if (typeof val === 'object') {
+                isJson = true;
+                try {
+                    raw = JSON.stringify(val);
+                    formatted = JSON.stringify(val, null, 2);
+                } catch (e) {
+                    raw = String(val);
+                    formatted = raw;
+                }
+            } else {
+                raw = String(val);
+                const trimmed = raw.trim();
+                if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+                    try {
+                        const parsed = JSON.parse(trimmed);
+                        isJson = true;
+                        formatted = JSON.stringify(parsed, null, 2);
+                    } catch (e) {
+                        isJson = false;
+                        formatted = raw;
+                    }
+                } else {
+                    formatted = raw;
+                }
+            }
+
+            const displayText = isJson ? formatted : raw;
+            const lines = displayText.split('\n').length;
+
+            inspectorModal.value = {
+                open: true,
+                colField,
+                rowIndex,
+                originalValue: val,
+                rawText: displayText,
+                isJson,
+                viewMode: isJson ? 'formatted' : 'raw',
+                highlightedHtml: isJson ? highlightJson(formatted) : '',
+                lineCount: lines,
+                copied: false
+            };
+        };
+
+        const closeInspector = () => {
+            inspectorModal.value.open = false;
+            inspectorModal.value.copied = false;
+        };
+
+        const copyInspectorContent = async () => {
+            try {
+                await navigator.clipboard.writeText(inspectorModal.value.rawText);
+                inspectorModal.value.copied = true;
+                setTimeout(() => {
+                    inspectorModal.value.copied = false;
+                }, 2000);
+            } catch (e) {
+                showToast('Failed to copy to clipboard', 'error');
+            }
+        };
+
+        const editFromInspector = () => {
+            const { rowIndex, colField, originalValue } = inspectorModal.value;
+            closeInspector();
+            if (rowIndex !== -1 && colField) {
+                startCellEdit(rowIndex, colField, originalValue);
+            }
+        };
+
         onMounted(() => {
             fetchFiles();
 
             window.addEventListener('keydown', (e) => {
-                if (e.key === 'Escape' && cellEditModal.value.open) {
-                    cancelCellEdit();
-                    return;
+                if (e.key === 'Escape') {
+                    if (inspectorModal.value.open) {
+                        closeInspector();
+                        return;
+                    }
+                    if (cellEditModal.value.open) {
+                        cancelCellEdit();
+                        return;
+                    }
                 }
                 const tag = e.target.tagName.toLowerCase();
                 if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
@@ -1222,6 +1435,8 @@
             refreshCurrentDatabase,
             colWidths, startColResize,
             cellEditModal, cellEditTextarea, startCellEdit, cancelCellEdit, saveCellEdit, cancelEdit: cancelCellEdit, saveCell: saveCellEdit,
+            // Inspector Modal
+            inspectorModal, isInspectable, openInspector, closeInspector, copyInspectorContent, editFromInspector, isColumnPrimaryKey,
             copiedCell, isCHeld, copyToClipboard, handleCellClick,
             isDragging, fileInput, triggerFileUpload, handleFileInputChange, onDragOver, onDragLeave, onDrop,
             showFileDropdown, switchActiveFile,
