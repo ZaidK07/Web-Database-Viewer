@@ -278,14 +278,7 @@
                                 @click="handleCellClick($event, row[col.Field], index, col.Field)"
                                 class="px-4 py-2 border-r border-slate-200 dark:border-slate-800 last:border-r-0 relative group/cell cursor-pointer">
                                 
-                                <!-- Edit Mode -->
-                                <div v-if="editingCell.row === index && editingCell.col === col.Field" class="flex items-center gap-1">
-                                    <input v-model="editDraftValue" @keyup.enter="saveCell()" @keyup.esc="cancelEdit()" type="text" class="w-full px-2 py-1 border border-brand-400 rounded shadow-inner text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/50 bg-white dark:bg-slate-800 dark:text-slate-100" autofocus v-focus />
-                                    <button @click.stop="saveCell()" class="text-green-600 dark:text-green-400 hover:text-green-700 p-1" title="Save"><i class="ph-bold ph-check"></i></button>
-                                    <button @click.stop="cancelEdit()" class="text-red-500 dark:text-red-400 hover:text-red-600 p-1" title="Cancel"><i class="ph-bold ph-x"></i></button>
-                                </div>
-                                <!-- View Mode -->
-                                <div v-else @dblclick="startCellEdit(index, col.Field, row[col.Field])" class="cell-content -mx-2 px-2 py-1 rounded transition-colors dark:text-slate-300" :class="{'cursor-not-allowed': schema[activeTable].primary_keys.includes(col.Field) || !schema[activeTable].primary_keys.length}" :title="row[col.Field]">
+                                <div @dblclick="startCellEdit(index, col.Field, row[col.Field])" class="cell-content -mx-2 px-2 py-1 rounded transition-colors dark:text-slate-300" :class="{'cursor-not-allowed': schema[activeTable].primary_keys.includes(col.Field) || !schema[activeTable].primary_keys.length}" :title="row[col.Field]">
                                     <span v-if="row[col.Field] === null" class="text-slate-300 dark:text-slate-600 italic font-mono text-xs">NULL</span>
                                     <span v-else-if="schema[activeTable].foreign_keys[col.Field]">
                                         <a @click.stop="isCHeld ? handleCellClick($event, row[col.Field], index, col.Field) : teleport(schema[activeTable].foreign_keys[col.Field].table, schema[activeTable].foreign_keys[col.Field].column, row[col.Field])" 
@@ -335,6 +328,79 @@
                 </div>
             </div>
 
+        </div>
+    </div>
+
+    <!-- Edit Cell Modal -->
+    <div v-if="cellEditModal.open" @keydown.esc.stop="cancelCellEdit" class="fixed inset-0 z-[60] flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-slate-900/40 dark:bg-slate-950/60 backdrop-blur-sm" @click="cancelCellEdit"></div>
+        <div class="relative bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-150">
+            <!-- Header -->
+            <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/60 flex items-center justify-center text-brand-600 dark:text-brand-400 border border-brand-200 dark:border-brand-800/60">
+                        <i class="ph-bold ph-pencil-simple text-lg"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                            Edit Cell
+                            <span class="text-xs font-mono font-medium px-2 py-0.5 rounded-md bg-brand-100 dark:bg-brand-900/40 text-brand-700 dark:text-brand-300">{% raw %}{{ cellEditModal.colField }}{% endraw %}</span>
+                        </h3>
+                        <p class="text-[11px] text-slate-400 dark:text-slate-500">
+                            Table: <span class="font-medium text-slate-600 dark:text-slate-300">{% raw %}{{ activeTable }}{% endraw %}</span>
+                            <span v-if="cellEditModal.colType" class="ml-2 font-mono">({% raw %}{{ cellEditModal.colType }}{% endraw %})</span>
+                        </p>
+                    </div>
+                </div>
+                <button @click="cancelCellEdit" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800">
+                    <i class="ph-bold ph-x text-lg"></i>
+                </button>
+            </div>
+            
+            <!-- Body -->
+            <div class="p-6 space-y-4">
+                <div class="flex items-center justify-between">
+                    <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                        Cell Value
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer select-none text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200">
+                        <input type="checkbox" v-model="cellEditModal.isNull" class="rounded border-slate-300 text-brand-600 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-800" />
+                        <span>Set to NULL</span>
+                    </label>
+                </div>
+
+                <div v-if="cellEditModal.isNull" class="py-8 px-4 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 text-center flex flex-col items-center justify-center gap-1">
+                    <span class="text-xs font-mono font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2.5 py-1 rounded border border-amber-200 dark:border-amber-800/60">NULL</span>
+                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">This field will be saved as a database NULL value.</p>
+                </div>
+                <div v-else>
+                    <textarea 
+                        ref="cellEditTextarea"
+                        v-model="cellEditModal.value" 
+                        @keydown.ctrl.enter.prevent="saveCellEdit" 
+                        @keydown.meta.enter.prevent="saveCellEdit"
+                        @keydown.esc="cancelCellEdit"
+                        rows="5" 
+                        placeholder="Enter cell value..." 
+                        class="w-full px-3.5 py-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-slate-100 rounded-xl text-sm font-mono focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 shadow-sm placeholder:text-slate-400 dark:placeholder:text-slate-600 resize-y"></textarea>
+                    <div class="flex justify-between items-center mt-1.5 text-[11px] text-slate-400 dark:text-slate-500">
+                        <span>Press <kbd class="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[10px] font-mono">⌘+Enter</kbd> or <kbd class="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[10px] font-mono">Ctrl+Enter</kbd> to save</span>
+                        <span>{% raw %}{{ (cellEditModal.value || '').length }}{% endraw %} chars</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="px-6 py-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex justify-end gap-3">
+                <button @click="cancelCellEdit" type="button" class="px-4 py-2 rounded-xl text-slate-600 dark:text-slate-400 font-medium hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors text-sm">
+                    Cancel
+                </button>
+                <button @click="saveCellEdit" :disabled="cellEditModal.isSaving" type="button" class="px-6 py-2 rounded-xl bg-brand-600 text-white font-bold hover:bg-brand-700 shadow-sm flex items-center gap-2 disabled:opacity-50 text-sm">
+                    <i v-if="cellEditModal.isSaving" class="ph ph-spinner animate-spin"></i>
+                    <i v-else class="ph-bold ph-check"></i>
+                    Save Changes
+                </button>
+            </div>
         </div>
     </div>
 
@@ -524,9 +590,27 @@
                 document.body.style.userSelect = '';
             };
 
-            // Editing State
-            const editingCell = ref({ row: -1, col: null });
-            const editDraftValue = ref('');
+            // Cell Edit Modal State
+            const cellEditModal = ref({
+                open: false,
+                rowIndex: -1,
+                colField: '',
+                colType: '',
+                value: '',
+                isNull: false,
+                isSaving: false,
+                originalValue: null
+            });
+            const cellEditTextarea = ref(null);
+            const cancelCellEdit = () => {
+                cellEditModal.value.open = false;
+                cellEditModal.value.rowIndex = -1;
+                cellEditModal.value.colField = '';
+                cellEditModal.value.value = '';
+                cellEditModal.value.isNull = false;
+                cellEditModal.value.isSaving = false;
+            };
+            const cancelEdit = cancelCellEdit;
 
             // Add Row State
             const showAddRowModal = ref(false);
@@ -724,8 +808,14 @@
                         cmdJIndex.value = 0;
                         setTimeout(() => { if(cmdJInput.value) cmdJInput.value.focus(); }, 50);
                     }
-                    if (e.key === 'Escape' && showCmdJ.value) {
-                        showCmdJ.value = false;
+                    if (e.key === 'Escape') {
+                        if (cellEditModal.value.open) {
+                            cancelCellEdit();
+                            return;
+                        }
+                        if (showCmdJ.value) {
+                            showCmdJ.value = false;
+                        }
                     }
                 });
             });
@@ -857,46 +947,61 @@
                 }
             };
 
-            // 5. Inline Cell Editing
+            // 5. Cell Editing (Modal Dialog)
             const startCellEdit = (rowIndex, colField, currentValue) => {
                 const tableName = activeTable.value;
-                const pks = schema.value[tableName].primary_keys;
+                const pks = schema.value[tableName]?.primary_keys || [];
                 
                 // Do not allow editing if table has no PK or if clicking on a PK column
                 if(!pks.length || pks.includes(colField)) return;
                 
-                editingCell.value = { row: rowIndex, col: colField };
-                editDraftValue.value = currentValue === null ? '' : (typeof currentValue === 'object' ? JSON.stringify(currentValue) : currentValue);
+                const colDef = schema.value[tableName]?.columns?.find(c => c.Field === colField);
+                const isNull = currentValue === null;
+                const valStr = isNull ? '' : (typeof currentValue === 'object' ? JSON.stringify(currentValue) : String(currentValue));
+
+                cellEditModal.value = {
+                    open: true,
+                    rowIndex,
+                    colField,
+                    colType: colDef ? colDef.Type : '',
+                    value: valStr,
+                    isNull,
+                    isSaving: false,
+                    originalValue: currentValue
+                };
+
+                Vue.nextTick(() => {
+                    if (cellEditTextarea.value) {
+                        cellEditTextarea.value.focus();
+                        cellEditTextarea.value.select();
+                    }
+                });
             };
 
-            const cancelEdit = () => {
-                editingCell.value = { row: -1, col: null };
-                editDraftValue.value = '';
-            };
-
-            const saveCell = async () => {
-                const { row: rowIndex, col: colField } = editingCell.value;
+            const saveCellEdit = async () => {
+                const { rowIndex, colField, isNull, value, originalValue } = cellEditModal.value;
                 if (rowIndex === -1 || !colField) return;
 
                 const tableName = activeTable.value;
                 const pks = schema.value[tableName].primary_keys;
                 const originalRow = rows.value[rowIndex];
                 
-                if (editDraftValue.value == originalRow[colField] || (editDraftValue.value === '' && originalRow[colField] === null)) {
-                    cancelEdit();
+                const newValue = isNull ? null : value;
+                if (newValue === originalValue) {
+                    cancelCellEdit();
                     return;
                 }
-                
-                const updates = { [colField]: editDraftValue.value };
+
+                const updates = { [colField]: newValue };
                 const pkValues = {};
                 pks.forEach(pk => {
                     pkValues[pk] = originalRow[pk];
                 });
 
-                // Optimistic UI update
+                cellEditModal.value.isSaving = true;
                 const previousValue = originalRow[colField];
-                rows.value[rowIndex][colField] = editDraftValue.value;
-                cancelEdit();
+                // Optimistic UI update
+                rows.value[rowIndex][colField] = newValue;
 
                 try {
                     const res = await fetch(`${window.API_BASE}/db/${encodeURIComponent(DBNAME)}/table/${encodeURIComponent(tableName)}/row`, {
@@ -910,11 +1015,14 @@
                         rows.value[rowIndex][colField] = previousValue; // Revert
                         baseSetup.showToast(data.error, 'error');
                     } else {
+                        cancelCellEdit();
                         baseSetup.showToast('Cell updated successfully');
                     }
                 } catch(e) {
                     rows.value[rowIndex][colField] = previousValue; // Revert
                     baseSetup.showToast('Error updating cell', 'error');
+                } finally {
+                    cellEditModal.value.isSaving = false;
                 }
             };
 
@@ -931,7 +1039,7 @@
                 activeTable, selectTable,
                 rows, dataLoading, currentPage, limit, totalRows, totalPages, searchQuery, activeFilter, loadData, clearFilter,
                 sortColumn, sortDirection, toggleSort, colWidths, startColResize, // Editing
-                editingCell, editDraftValue, startCellEdit, cancelEdit, saveCell, Math,
+                cellEditModal, cellEditTextarea, startCellEdit, cancelCellEdit, saveCellEdit, cancelEdit: cancelCellEdit, saveCell: saveCellEdit, Math,
                 // New Features
                 showAddRowModal, addRowData, isSavingRow, openAddRowModal, saveNewRow, deleteRow, exportCSV, teleport,
                 copyToClipboard, copiedCell, handleCellClick
