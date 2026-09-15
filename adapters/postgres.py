@@ -124,6 +124,86 @@ class PostgreSQLAdapter:
             return {row['column_name']: {'table': row['foreign_table_name'],
                     'column': row['foreign_column_name']} for row in cursor.fetchall()}
 
+    def get_schema(self, conn, database, tables, views):
+        objects = set(tables) | set(views)
+        schema = {obj: {'columns': [], 'primary_keys': [], 'foreign_keys': {}} for obj in objects}
+        if not objects:
+            return schema
+
+        with conn.cursor() as cursor:
+            # 1. Bulk columns query
+            cursor.execute('''
+                SELECT c.table_name,
+                       c.column_name AS "Field",
+                       pg_catalog.format_type(a.atttypid, a.atttypmod) AS "Type",
+                       CASE WHEN c.is_nullable = 'YES' THEN 'YES' ELSE 'NO' END AS "Null",
+                       CASE WHEN EXISTS (
+                           SELECT 1
+                           FROM information_schema.table_constraints ptc
+                           JOIN information_schema.key_column_usage pkcu
+                             ON ptc.constraint_name = pkcu.constraint_name
+                            AND ptc.constraint_schema = pkcu.constraint_schema
+                           WHERE ptc.constraint_type = 'PRIMARY KEY'
+                             AND ptc.table_schema = c.table_schema
+                             AND ptc.table_name = c.table_name
+                             AND pkcu.column_name = c.column_name
+                       ) THEN 'PRI' ELSE '' END AS "Key",
+                       c.column_default AS "Default",
+                       CASE WHEN c.is_identity = 'YES' OR c.column_default LIKE 'nextval(%%' THEN 'auto_increment' ELSE '' END AS "Extra"
+                FROM information_schema.columns c
+                JOIN pg_catalog.pg_namespace n ON n.nspname = c.table_schema
+                JOIN pg_catalog.pg_class cl ON cl.relnamespace = n.oid AND cl.relname = c.table_name
+                JOIN pg_catalog.pg_attribute a ON a.attrelid = cl.oid AND a.attname = c.column_name
+                WHERE c.table_schema = %s
+                ORDER BY c.table_name, c.ordinal_position
+            ''', (self.schema,))
+            for row in cursor.fetchall():
+                tbl = row['table_name']
+                if tbl in schema:
+                    schema[tbl]['columns'].append({
+                        'Field': row['Field'],
+                        'Type': row['Type'],
+                        'Null': row['Null'],
+                        'Key': row['Key'],
+                        'Default': row['Default'],
+                        'Extra': row['Extra'],
+                    })
+
+            # 2. Bulk primary keys query
+            cursor.execute('''
+                SELECT tc.table_name, kcu.column_name
+                FROM information_schema.table_constraints tc
+                JOIN information_schema.key_column_usage kcu
+                  ON tc.constraint_name = kcu.constraint_name AND tc.constraint_schema = kcu.constraint_schema
+                WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_schema = %s
+                ORDER BY tc.table_name, kcu.ordinal_position
+            ''', (self.schema,))
+            for row in cursor.fetchall():
+                tbl = row['table_name']
+                if tbl in schema:
+                    schema[tbl]['primary_keys'].append(row['column_name'])
+
+            # 3. Bulk foreign keys query
+            cursor.execute('''
+                SELECT tc.table_name, kcu.column_name, ccu.table_name AS foreign_table_name,
+                       ccu.column_name AS foreign_column_name
+                FROM information_schema.table_constraints tc
+                JOIN information_schema.key_column_usage kcu
+                  ON tc.constraint_name = kcu.constraint_name AND tc.constraint_schema = kcu.constraint_schema
+                JOIN information_schema.constraint_column_usage ccu
+                  ON ccu.constraint_name = tc.constraint_name AND ccu.constraint_schema = tc.constraint_schema
+                WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = %s
+            ''', (self.schema,))
+            for row in cursor.fetchall():
+                tbl = row['table_name']
+                if tbl in schema:
+                    schema[tbl]['foreign_keys'][row['column_name']] = {
+                        'table': row['foreign_table_name'],
+                        'column': row['foreign_column_name']
+                    }
+
+        return schema
+
     def search_expression(self, column):
         return f'CAST({self.quote(column)} AS TEXT) ILIKE %s'
 

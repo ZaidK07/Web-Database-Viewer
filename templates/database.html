@@ -570,6 +570,7 @@
 
 {% block scripts %}
 <script>
+    window.INITIAL_DATABASES = {{ (profile.databases if profile else []) | tojson | safe }};
     const DBNAME = "{{ dbname }}";
     const INITIAL_TABLE = "{{ initial_table or '' }}";
 
@@ -1030,10 +1031,14 @@
                             sidebarWidth.value = calculatedWidth;
                         }
 
-                        // If there was an initial table in the URL, select it
+                        // If there was an initial table in the URL, verify it and update sort column if needed
                         if (INITIAL_TABLE && visibleObjects.includes(INITIAL_TABLE)) {
                             if (views.value.includes(INITIAL_TABLE)) showViews.value = true;
-                            selectTable(INITIAL_TABLE);
+                            const tableSchema = schema.value[INITIAL_TABLE];
+                            if (tableSchema && tableSchema.columns.some(c => c.Field === 'created_at') && !sortColumn.value) {
+                                sortColumn.value = 'created_at';
+                                sortDirection.value = 'desc';
+                            }
                         }
                     }
                 } catch(e) {
@@ -1244,7 +1249,15 @@
 
             // Initialize
             Vue.onMounted(() => {
-                fetchSchema();
+                if (INITIAL_TABLE) {
+                    activeTable.value = INITIAL_TABLE;
+                    Promise.all([
+                        fetchSchema(),
+                        loadData(1)
+                    ]);
+                } else {
+                    fetchSchema();
+                }
             });
 
             return {

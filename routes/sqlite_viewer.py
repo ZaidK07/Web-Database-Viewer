@@ -94,12 +94,15 @@ def get_schema(file_id):
         with adapter.connect() as conn:
             tables = adapter.list_tables(conn)
             views = adapter.list_views(conn)
-            objects = [*tables, *views]
-            schema = {table: {
-                'columns': adapter.columns(conn, table),
-                'primary_keys': adapter.primary_keys(conn, table),
-                'foreign_keys': adapter.foreign_keys(conn, None, table),
-            } for table in objects}
+            if hasattr(adapter, 'get_schema'):
+                schema = adapter.get_schema(conn, None, tables, views)
+            else:
+                objects = [*tables, *views]
+                schema = {table: {
+                    'columns': adapter.columns(conn, table),
+                    'primary_keys': adapter.primary_keys(conn, table),
+                    'foreign_keys': adapter.foreign_keys(conn, None, table),
+                } for table in objects}
         return jsonify(success=True, schema=schema, tables=tables, views=views, file=file_info)
     except Exception as error:
         return api_error(error)

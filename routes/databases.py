@@ -41,12 +41,9 @@ def index(profile_name):
 @databases_bp.route('/p/<profile_name>/db/<dbname>/table/<tablename>')
 def database_view(profile_name, dbname, tablename=None):
     try:
-        adapter = get_adapter(profile_name)
-        with adapter.connect(dbname) as conn:
-            tables = adapter.list_tables(conn)
-            views = adapter.list_views(conn)
-        return render_template('database.html', dbname=dbname, tables=tables, views=views,
-                               initial_table=tablename, profile=require_profile(profile_name))
+        profile = require_profile(profile_name)
+        return render_template('database.html', dbname=dbname, tables=[], views=[],
+                               initial_table=tablename, profile=profile)
     except Exception as error:
         return render_template('database.html', dbname=dbname, error=str(error), tables=[],
                                views=[], initial_table=tablename, profile=get_profile(profile_name))
@@ -121,12 +118,15 @@ def get_db_schema(profile_name, dbname):
         with adapter.connect(dbname) as conn:
             tables = adapter.list_tables(conn)
             views = adapter.list_views(conn)
-            objects = [*tables, *views]
-            schema = {table: {
-                'columns': adapter.columns(conn, table),
-                'primary_keys': adapter.primary_keys(conn, table),
-                'foreign_keys': adapter.foreign_keys(conn, dbname, table),
-            } for table in objects}
+            if hasattr(adapter, 'get_schema'):
+                schema = adapter.get_schema(conn, dbname, tables, views)
+            else:
+                objects = [*tables, *views]
+                schema = {table: {
+                    'columns': adapter.columns(conn, table),
+                    'primary_keys': adapter.primary_keys(conn, table),
+                    'foreign_keys': adapter.foreign_keys(conn, dbname, table),
+                } for table in objects}
         return jsonify(success=True, schema=schema, tables=tables, views=views)
     except Exception as error:
         return api_error(error)

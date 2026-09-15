@@ -66,6 +66,62 @@ class MySQLAdapter:
             return {row['COLUMN_NAME']: {'table': row['REFERENCED_TABLE_NAME'],
                     'column': row['REFERENCED_COLUMN_NAME']} for row in cursor.fetchall()}
 
+    def get_schema(self, conn, database, tables, views):
+        objects = set(tables) | set(views)
+        schema = {obj: {'columns': [], 'primary_keys': [], 'foreign_keys': {}} for obj in objects}
+        if not objects:
+            return schema
+
+        with conn.cursor() as cursor:
+            # 1. Fetch all columns for all tables in one query
+            cursor.execute('''
+                SELECT TABLE_NAME, COLUMN_NAME AS Field, COLUMN_TYPE AS Type,
+                       IS_NULLABLE AS `Null`, COLUMN_KEY AS `Key`,
+                       COLUMN_DEFAULT AS `Default`, EXTRA AS Extra
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_SCHEMA = %s
+                ORDER BY TABLE_NAME, ORDINAL_POSITION
+            ''', (database,))
+            for row in cursor.fetchall():
+                tbl = row['TABLE_NAME']
+                if tbl in schema:
+                    schema[tbl]['columns'].append({
+                        'Field': row['Field'],
+                        'Type': row['Type'],
+                        'Null': row['Null'],
+                        'Key': row['Key'],
+                        'Default': row['Default'],
+                        'Extra': row['Extra'],
+                    })
+
+            # 2. Fetch all primary keys in one query
+            cursor.execute('''
+                SELECT TABLE_NAME, COLUMN_NAME
+                FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+                WHERE TABLE_SCHEMA = %s AND CONSTRAINT_NAME = 'PRIMARY'
+                ORDER BY TABLE_NAME, ORDINAL_POSITION
+            ''', (database,))
+            for row in cursor.fetchall():
+                tbl = row['TABLE_NAME']
+                if tbl in schema:
+                    schema[tbl]['primary_keys'].append(row['COLUMN_NAME'])
+
+            # 3. Fetch all foreign keys in one query
+            cursor.execute('''
+                SELECT TABLE_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+                FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+                WHERE TABLE_SCHEMA = %s AND REFERENCED_TABLE_NAME IS NOT NULL
+            ''', (database,))
+            for row in cursor.fetchall():
+                tbl = row['TABLE_NAME']
+                if tbl in schema:
+                    schema[tbl]['foreign_keys'][row['COLUMN_NAME']] = {
+                        'table': row['REFERENCED_TABLE_NAME'],
+                        'column': row['REFERENCED_COLUMN_NAME']
+                    }
+
+        return schema
+
     def search_expression(self, column):
         return f'{self.quote(column)} LIKE %s'
 

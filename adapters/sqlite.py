@@ -105,6 +105,49 @@ class SQLiteAdapter:
             fks[from_col] = {'table': to_table, 'column': to_col}
         return fks
 
+    def get_schema(self, conn, database, tables, views):
+        objects = [*tables, *views]
+        schema = {}
+        cursor = conn.cursor()
+        for table in objects:
+            cursor.execute(f"PRAGMA table_info({self.quote(table)})")
+            rows = cursor.fetchall()
+            cols = []
+            pks = []
+            for r in rows:
+                is_pk = bool(r['pk'] if isinstance(r, sqlite3.Row) else r[5])
+                name = r['name'] if isinstance(r, sqlite3.Row) else r[1]
+                ctype = r['type'] if isinstance(r, sqlite3.Row) else r[2]
+                notnull = r['notnull'] if isinstance(r, sqlite3.Row) else r[3]
+                dflt = r['dflt_value'] if isinstance(r, sqlite3.Row) else r[4]
+
+                cols.append({
+                    'Field': name,
+                    'Type': ctype or 'TEXT',
+                    'Null': 'NO' if notnull else 'YES',
+                    'Key': 'PRI' if is_pk else '',
+                    'Default': dflt,
+                    'Extra': 'auto_increment' if (is_pk and 'INTEGER' in (ctype or '').upper()) else ''
+                })
+                if is_pk:
+                    pks.append(name)
+
+            cursor.execute(f"PRAGMA foreign_key_list({self.quote(table)})")
+            fk_rows = cursor.fetchall()
+            fks = {}
+            for r in fk_rows:
+                from_col = r['from'] if isinstance(r, sqlite3.Row) else r[3]
+                to_table = r['table'] if isinstance(r, sqlite3.Row) else r[2]
+                to_col = r['to'] if isinstance(r, sqlite3.Row) else r[4]
+                fks[from_col] = {'table': to_table, 'column': to_col}
+
+            schema[table] = {
+                'columns': cols,
+                'primary_keys': pks,
+                'foreign_keys': fks,
+            }
+        return schema
+
     def search_expression(self, column):
         return f'CAST({self.quote(column)} AS TEXT) LIKE ?'
 
