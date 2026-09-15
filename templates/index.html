@@ -62,8 +62,8 @@
                         <button @click.stop="exportDb(db.name)" class="text-slate-300 dark:text-slate-600 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors p-1" title="Export Database">
                             <i class="ph ph-download-simple text-lg"></i>
                         </button>
-                        <button @click.stop="removeDb(db.name)" class="text-slate-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 transition-colors p-1" title="Remove Database">
-                            <i class="ph ph-trash text-lg"></i>
+                        <button @click.stop="removeDb(db.name)" class="text-slate-300 dark:text-slate-600 hover:text-amber-500 dark:hover:text-amber-400 transition-colors p-1" title="Remove from list">
+                            <i class="ph ph-minus-circle text-lg"></i>
                         </button>
                     </div>
                 </div>
@@ -154,24 +154,20 @@
                     if (data.success && data.statuses) {
                         databases.value.forEach(db => {
                             if (data.statuses[db.name] !== undefined) {
-                                db.accessible = data.statuses[db.name];
+                                db.accessible = Boolean(data.statuses[db.name]);
+                            } else {
+                                db.accessible = false;
                             }
                         });
                         return;
                     }
                 } catch (e) {
-                    console.warn("Bulk status fetch failed, falling back to individual checks", e);
+                    console.warn("Status check failed:", e);
                 }
 
-                // Fallback to individual checks if bulk endpoint fails
-                databases.value.forEach(async (db) => {
-                    try {
-                        const res = await fetch(`${window.API_BASE}/dbs/${encodeURIComponent(db.name)}/check`);
-                        const data = await res.json();
-                        db.accessible = Boolean(data.success && data.accessible);
-                    } catch (err) {
-                        db.accessible = false;
-                    }
+                // If check fails or host is unreachable, mark unreached instead of blocking
+                databases.value.forEach(db => {
+                    if (db.accessible === null) db.accessible = false;
                 });
             };
 

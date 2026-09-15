@@ -9,12 +9,14 @@ class MySQLAdapter:
     def __init__(self, profile):
         self.profile = profile
 
-    def connect(self, database=None, admin=False, dict_rows=True):
+    def connect(self, database=None, admin=False, dict_rows=True, timeout=5):
         config = {k: self.profile[k] for k in ('host', 'port', 'user', 'password')}
         if database:
             config['database'] = database
         if dict_rows:
             config['cursorclass'] = pymysql.cursors.DictCursor
+        if timeout:
+            config['connect_timeout'] = timeout
         return pymysql.connect(**config)
 
     @staticmethod
@@ -125,8 +127,20 @@ class MySQLAdapter:
     def search_expression(self, column):
         return f'{self.quote(column)} LIKE %s'
 
-    def insert_suffix(self, primary_keys):
-        return ''
+    def approximate_row_count(self, conn, database, table):
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute('''
+                    SELECT TABLE_ROWS
+                    FROM INFORMATION_SCHEMA.TABLES
+                    WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s
+                ''', (database, table))
+                row = cursor.fetchone()
+                if row and row.get('TABLE_ROWS') is not None:
+                    return int(row['TABLE_ROWS'])
+        except Exception:
+            pass
+        return None
 
     @staticmethod
     def inserted_id(cursor, primary_keys):

@@ -161,18 +161,30 @@ def get_table_data(profile_name, dbname, tablename):
             filter_col = request.args.get('filter_col', '')
             filter_val = request.args.get('filter_val', '')
             search = request.args.get('search', '')
+            has_filter = False
+
             if filter_col and filter_val and filter_col in columns:
+                has_filter = True
                 clause = f' WHERE {adapter.quote(filter_col)} = %s'
                 query += clause
                 count_query += clause
                 params.append(filter_val)
             elif search:
+                has_filter = True
                 clause = ' WHERE ' + ' OR '.join(adapter.search_expression(col) for col in columns)
                 query += clause
                 count_query += clause
                 params = [f'%{search}%'] * len(columns)
-            cursor.execute(count_query, params)
-            total = cursor.fetchone()['total']
+
+            # Optimization 2: Fast / Approximate COUNT(*) for unfiltered tables
+            total = None
+            if not has_filter and hasattr(adapter, 'approximate_row_count'):
+                total = adapter.approximate_row_count(conn, dbname, tablename)
+
+            if total is None:
+                cursor.execute(count_query, params)
+                total = cursor.fetchone()['total']
+
             sort_col = request.args.get('sort')
             sort_dir = request.args.get('dir', 'asc').upper()
             if sort_col in columns:
@@ -207,18 +219,48 @@ def mutate_row(profile_name, dbname, tablename):
                 inserted_id = adapter.inserted_id(cursor, primary_keys)
                 conn.commit()
                 return jsonify(success=True, lastrowid=inserted_id)
+
+            # Optimization 3: Batch DELETE using single query with IN clause
             if request.method == 'DELETE':
                 batch_rows = data.get('rows')
                 if isinstance(batch_rows, list) and batch_rows:
-                    total_affected = 0
-                    for row_pks in batch_rows:
-                        if not row_pks or any(k not in valid for k in row_pks):
-                            continue
-                        where = ' AND '.join(f'{adapter.quote(k)} = %s' for k in row_pks)
-                        cursor.execute(f'DELETE FROM {table_ref} WHERE {where}', list(row_pks.values()))
-                        total_affected += cursor.rowcount
+                    cleaned_rows = [r for r in batch_rows if r and all(k in valid for k in r)]
+                    if not cleaned_rows:
+                        return jsonify(success=True, affected_rows=0)
+
+                    # Check if all rows have the exact same set of primary key fields
+                    first_keys = tuple(sorted(cleaned_rows[0].keys()))
+                    same_keys = all(tuple(sorted(r.keys())) == first_keys for r in cleaned_rows)
+
+                    if same_keys and len(first_keys) == 1:
+                        # Single-column PK: WHERE id IN (%s, %s, ...)
+                        pk_col = first_keys[0]
+                        quoted_col = adapter.quote(pk_col)
+                        placeholders = ', '.join(['%s'] * len(cleaned_rows))
+                        del_params = [r[pk_col] for r in cleaned_rows]
+                        cursor.execute(f'DELETE FROM {table_ref} WHERE {quoted_col} IN ({placeholders})', del_params)
+                        affected = cursor.rowcount
+                    elif same_keys and len(first_keys) > 1:
+                        # Multi-column composite PK: WHERE (k1, k2) IN ((%s, %s), ...)
+                        cols_clause = f"({', '.join(adapter.quote(k) for k in first_keys)})"
+                        row_placeholders = f"({', '.join(['%s'] * len(first_keys))})"
+                        in_placeholders = ', '.join([row_placeholders] * len(cleaned_rows))
+                        del_params = [r[k] for r in cleaned_rows for k in first_keys]
+                        cursor.execute(f'DELETE FROM {table_ref} WHERE {cols_clause} IN ({in_placeholders})', del_params)
+                        affected = cursor.rowcount
+                    else:
+                        # Variable or mixed keys fallback
+                        clauses = []
+                        del_params = []
+                        for r in cleaned_rows:
+                            sub_clause = ' AND '.join(f'{adapter.quote(k)} = %s' for k in r)
+                            clauses.append(f'({sub_clause})')
+                            del_params.extend(r.values())
+                        cursor.execute(f"DELETE FROM {table_ref} WHERE {' OR '.join(clauses)}", del_params)
+                        affected = cursor.rowcount
+
                     conn.commit()
-                    return jsonify(success=True, affected_rows=total_affected)
+                    return jsonify(success=True, affected_rows=affected)
 
             primary_keys = data.get('primary_keys') or {}
             if not primary_keys or any(k not in valid for k in primary_keys):

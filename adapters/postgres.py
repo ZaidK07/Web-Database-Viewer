@@ -18,13 +18,15 @@ class PostgreSQLAdapter:
         self.profile = profile
         self.schema = profile.get('schema') or 'public'
 
-    def connect(self, database=None, admin=False, dict_rows=True):
+    def connect(self, database=None, admin=False, dict_rows=True, timeout=5):
         dbname = database or self.profile.get('maintenance_database') or 'postgres'
         kwargs = {
             'host': self.profile['host'], 'port': self.profile['port'],
             'user': self.profile['user'], 'password': self.profile['password'],
             'dbname': dbname,
         }
+        if timeout:
+            kwargs['connect_timeout'] = timeout
         if dict_rows:
             kwargs['row_factory'] = dict_row
         if self.profile.get('sslmode'):
@@ -207,8 +209,21 @@ class PostgreSQLAdapter:
     def search_expression(self, column):
         return f'CAST({self.quote(column)} AS TEXT) ILIKE %s'
 
-    def insert_suffix(self, primary_keys):
-        return f' RETURNING {self.quote(primary_keys[0])}' if primary_keys else ''
+    def approximate_row_count(self, conn, database, table):
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute('''
+                    SELECT c.reltuples::bigint AS est_count
+                    FROM pg_class c
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE n.nspname = %s AND c.relname = %s
+                ''', (self.schema, table))
+                row = cursor.fetchone()
+                if row and row.get('est_count') is not None and row['est_count'] >= 0:
+                    return int(row['est_count'])
+        except Exception:
+            pass
+        return None
 
     @staticmethod
     def inserted_id(cursor, primary_keys):
