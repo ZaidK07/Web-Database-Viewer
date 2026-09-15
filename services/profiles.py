@@ -167,3 +167,44 @@ def check_db_accessibility(profile_name, database):
             return True
     except Exception:
         return False
+
+
+def check_dbs_accessibility(profile_name, database_names):
+    """
+    Check accessibility of multiple databases efficiently in a single host connection.
+    Falls back to individual checks if host-level query is unavailable.
+    """
+    if not database_names:
+        return {}
+
+    adapter = get_adapter(profile_name)
+    engine = adapter.engine.lower()
+
+    if engine == 'mysql':
+        try:
+            with adapter.connect(dict_rows=False) as conn, conn.cursor() as cursor:
+                cursor.execute('SHOW DATABASES')
+                accessible_set = {row[0] for row in cursor.fetchall()}
+            return {name: (name in accessible_set) for name in database_names}
+        except Exception:
+            return {name: False for name in database_names}
+
+    if engine in ('postgres', 'postgresql'):
+        try:
+            with adapter.connect(dict_rows=True) as conn, conn.cursor() as cursor:
+                cursor.execute('''
+                    SELECT datname, has_database_privilege(datname, 'CONNECT') AS can_connect
+                    FROM pg_database
+                    WHERE datallowconn
+                ''')
+                db_privs = {row['datname']: bool(row['can_connect']) for row in cursor.fetchall()}
+            return {name: bool(db_privs.get(name, False)) for name in database_names}
+        except Exception:
+            return {name: False for name in database_names}
+
+    # Fallback for any other adapter
+    results = {}
+    for name in database_names:
+        results[name] = check_db_accessibility(profile_name, name)
+    return results
+

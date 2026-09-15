@@ -9,7 +9,8 @@ from .profiles import (
     get_db_list,
     save_db_list,
     get_adapter,
-    check_db_accessibility
+    check_db_accessibility,
+    check_dbs_accessibility
 )
 from .sqlite_storage import (
     save_uploaded_sqlite,
@@ -31,6 +32,7 @@ __all__ = [
     'save_db_list',
     'get_adapter',
     'check_db_accessibility',
+    'check_dbs_accessibility',
     'save_uploaded_sqlite',
     'list_uploaded_sqlite_files',
     'get_uploaded_sqlite_file',

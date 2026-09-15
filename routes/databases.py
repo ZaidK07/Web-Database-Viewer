@@ -14,6 +14,7 @@ from services.profiles import (
     save_db_list,
     get_adapter,
     check_db_accessibility,
+    check_dbs_accessibility,
     get_profiles_data
 )
 
@@ -54,6 +55,16 @@ def check_db_status(profile_name, dbname):
     if dbname not in get_db_list(profile_name):
         return api_error('Database not found in list', 404)
     return jsonify(success=True, name=dbname, accessible=check_db_accessibility(profile_name, dbname))
+
+
+@databases_bp.route('/api/p/<profile_name>/dbs/status')
+def check_all_dbs_status(profile_name):
+    try:
+        db_list = get_db_list(profile_name)
+        statuses = check_dbs_accessibility(profile_name, db_list)
+        return jsonify(success=True, statuses=statuses)
+    except Exception as error:
+        return api_error(error)
 
 
 @databases_bp.route('/api/p/<profile_name>/dbs/list')

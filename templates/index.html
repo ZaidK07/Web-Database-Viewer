@@ -146,25 +146,32 @@
             // Sync with base layout's dbList for the SQL sidebar
             baseSetup.dbList.value = databases.value;
 
-            const checkSingleDb = async (index) => {
-                const db = databases.value[index];
+            const fetchStatuses = async () => {
+                if (!databases.value.length) return;
                 try {
-                    const res = await fetch(`${window.API_BASE}/dbs/${encodeURIComponent(db.name)}/check`);
+                    const res = await fetch(`${window.API_BASE}/dbs/status`);
                     const data = await res.json();
-                    if(data.success) {
-                        databases.value[index].accessible = data.accessible;
-                    } else {
-                        databases.value[index].accessible = false;
+                    if (data.success && data.statuses) {
+                        databases.value.forEach(db => {
+                            if (data.statuses[db.name] !== undefined) {
+                                db.accessible = data.statuses[db.name];
+                            }
+                        });
+                        return;
                     }
-                } catch(e) {
-                    databases.value[index].accessible = false;
+                } catch (e) {
+                    console.warn("Bulk status fetch failed, falling back to individual checks", e);
                 }
-            };
 
-            const fetchStatuses = () => {
-                // Fire off check requests for all databases concurrently
-                databases.value.forEach((db, index) => {
-                    checkSingleDb(index);
+                // Fallback to individual checks if bulk endpoint fails
+                databases.value.forEach(async (db) => {
+                    try {
+                        const res = await fetch(`${window.API_BASE}/dbs/${encodeURIComponent(db.name)}/check`);
+                        const data = await res.json();
+                        db.accessible = Boolean(data.success && data.accessible);
+                    } catch (err) {
+                        db.accessible = false;
+                    }
                 });
             };
 
