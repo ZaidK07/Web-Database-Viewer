@@ -81,6 +81,21 @@
         background: var(--db-card-accent);
         clip-path: polygon(30% 0, 100% 0, 100% 70%);
         filter: drop-shadow(-2px 2px 4px color-mix(in srgb, var(--db-card-accent) 20%, transparent));
+        transition:
+            width 320ms cubic-bezier(0.22, 1, 0.36, 1),
+            height 320ms cubic-bezier(0.22, 1, 0.36, 1),
+            clip-path 320ms cubic-bezier(0.22, 1, 0.36, 1),
+            border-radius 320ms ease,
+            filter 320ms ease;
+        will-change: width, height, clip-path;
+    }
+    .db-card-accent:hover::before,
+    .db-card-accent:focus-visible::before {
+        width: 52px;
+        height: 52px;
+        border-radius: 0 1rem 0 0;
+        clip-path: polygon(24% 0, 100% 0, 100% 76%);
+        filter: drop-shadow(-3px 3px 7px color-mix(in srgb, var(--db-card-accent) 26%, transparent));
     }
     .db-card-sortable.is-dragging {
         opacity: 0.16;
@@ -397,13 +412,15 @@
                 }
             };
 
-            const removeDb = async (name) => {
-                const confirmed = await baseSetup.customConfirm(
-                    'Remove Database',
-                    `Are you sure you want to remove the database "${name}" from your tracked list? This will not affect the data on the server.`,
-                    false
-                );
-                if(!confirmed) return;
+            const removeDb = async (name, skipConfirmation = false) => {
+                if (!skipConfirmation) {
+                    const confirmed = await baseSetup.customConfirm(
+                        'Remove Database',
+                        `Are you sure you want to remove the database "${name}" from your tracked list? This will not affect the data on the server.`,
+                        false
+                    );
+                    if(!confirmed) return;
+                }
 
                 try {
                     const res = await fetch(`${window.API_BASE}/dbs/${encodeURIComponent(name)}`, { method: 'DELETE' });

@@ -97,7 +97,7 @@
                                 <i class="ph-bold ph-dots-six-vertical"></i>
                             </button>
                             <button @click.stop="exportDb(db.name)" class="w-8 h-8 rounded-lg hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-950/40 dark:hover:text-indigo-400 transition-colors" title="Export database"><i class="ph ph-download-simple"></i></button>
-                            <button @click.stop="removeDb(db.name)" class="w-8 h-8 rounded-lg hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400 transition-colors" title="Remove from list"><i class="ph ph-minus-circle"></i></button>
+                            <button @click.stop="removeDb(db.name, true)" class="w-8 h-8 rounded-lg hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400 transition-colors" title="Remove from dashboard"><i class="ph ph-minus-circle"></i></button>
                             <span class="w-8 h-8 flex items-center justify-center"><i class="ph ph-arrow-right group-hover:text-brand-500 group-hover:translate-x-0.5 transition-all"></i></span>
                         </div>
                     </div>
@@ -145,8 +145,8 @@
                             <span class="font-medium text-slate-700 dark:text-slate-200 break-all" :title="dbName">{% raw %}{{ dbName }}{% endraw %}</span>
                         </div>
                         <div class="flex items-center gap-2 shrink-0">
-                            <button v-if="databases.find(d => d.name === dbName)" disabled class="w-9 h-9 inline-flex items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-600 cursor-not-allowed" title="Already added" aria-label="Already added">
-                                <i class="ph-bold ph-check"></i>
+                            <button v-if="databases.find(d => d.name === dbName)" @click="removeDb(dbName, true)" class="w-9 h-9 inline-flex items-center justify-center rounded-lg bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 hover:bg-amber-500 hover:text-white hover:border-amber-500 transition-colors" title="Remove from dashboard" aria-label="Remove database from dashboard">
+                                <i class="ph-bold ph-minus"></i>
                             </button>
                             <button v-else @click="addRemoteDb(dbName)" class="w-9 h-9 inline-flex items-center justify-center rounded-lg bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-400 border border-brand-200 dark:border-brand-800 hover:bg-brand-600 hover:text-white dark:hover:text-white hover:border-brand-600 transition-colors" title="Add database" aria-label="Add database">
                                 <i class="ph-bold ph-plus"></i>
