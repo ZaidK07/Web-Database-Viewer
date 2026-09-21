@@ -92,6 +92,20 @@
         border-color: #0ea5e9;
         box-shadow: 0 18px 36px rgba(0, 0, 0, 0.35);
     }
+    .db-card-sortable:focus-visible {
+        outline: none;
+        border-color: #0ea5e9;
+        box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.18), 0 12px 28px rgba(15, 23, 42, 0.1);
+    }
+    .dark .db-card-sortable:focus-visible {
+        border-color: #38bdf8;
+        box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2), 0 12px 28px rgba(0, 0, 0, 0.3);
+    }
+    .dashboard-scroll {
+        scrollbar-gutter: stable;
+        -webkit-overflow-scrolling: touch;
+        touch-action: pan-y;
+    }
 </style>
 {% endblock %}
 
@@ -127,6 +141,7 @@
             // Normalized database list for sidebar & SQL console
             baseSetup.dbList.value = (window.INITIAL_DATABASES || []).map(db => typeof db === 'string' ? { name: db, accessible: null } : db);
             const databases = ref(baseSetup.dbList.value);
+            const focusedDbIndex = ref(0);
             const draggedDbIndex = ref(null);
             const draggedDbName = ref(null);
             let nextDatabaseDragMoveAt = 0;
@@ -233,6 +248,46 @@
 
             restoreDatabaseOrder();
 
+            const onlineDatabaseCount = computed(() => databases.value.filter(db => db.accessible === true).length);
+            const offlineDatabaseCount = computed(() => databases.value.filter(db => db.accessible === false).length);
+            const checkingDatabaseCount = computed(() => databases.value.filter(db => db.accessible === null).length);
+
+            const dashboardGridColumns = () => {
+                if (window.innerWidth >= 1280) return 4;
+                if (window.innerWidth >= 1024) return 3;
+                if (window.innerWidth >= 768) return 2;
+                return 1;
+            };
+
+            const focusDatabaseCard = (index) => {
+                const boundedIndex = Math.max(0, Math.min(databases.value.length - 1, index));
+                focusedDbIndex.value = boundedIndex;
+                Vue.nextTick(() => {
+                    document.querySelectorAll('.db-card-sortable')[boundedIndex]?.focus({ preventScroll: true });
+                    document.querySelectorAll('.db-card-sortable')[boundedIndex]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                });
+            };
+
+            const handleDatabaseCardKeydown = (event, index) => {
+                if (event.target !== event.currentTarget) return;
+                const columns = dashboardGridColumns();
+                const moves = {
+                    ArrowLeft: -1,
+                    ArrowRight: 1,
+                    ArrowUp: -columns,
+                    ArrowDown: columns,
+                };
+                if (event.key in moves) {
+                    event.preventDefault();
+                    focusDatabaseCard(index + moves[event.key]);
+                    return;
+                }
+                if (event.key === 'Enter' && databases.value[index]?.accessible !== false) {
+                    event.preventDefault();
+                    openDatabaseTab(databases.value[index].name);
+                }
+            };
+
             // -------------------------------------------------------------
             // SPA Tabs State Management
             // -------------------------------------------------------------
@@ -270,6 +325,7 @@
             // -------------------------------------------------------------
             const newDbName = ref('');
             const isAdding = ref(false);
+            const isRefreshingStatuses = ref(false);
             const isImporting = ref(false);
             const fileInput = ref(null);
             const importDbName = ref('');
@@ -280,7 +336,8 @@
             const isCreatingRemote = ref(false);
 
             const fetchStatuses = async () => {
-                if (!databases.value.length) return;
+                if (!databases.value.length || isRefreshingStatuses.value) return;
+                isRefreshingStatuses.value = true;
                 try {
                     const res = await fetch(`${window.API_BASE}/dbs/status`);
                     const data = await res.json();
@@ -304,6 +361,8 @@
                     }
                 } catch (e) {
                     console.warn("Status check failed:", e);
+                } finally {
+                    isRefreshingStatuses.value = false;
                 }
                 databases.value.forEach(db => {
                     if (db.accessible === null) db.accessible = false;
@@ -1169,7 +1228,17 @@
                 // Keybindings: C key instant copy & Cmd+J Palette
                 window.addEventListener('keydown', (e) => {
                     const tag = e.target.tagName.toLowerCase();
-                    if (tag !== 'input' && tag !== 'textarea' && !e.target.isContentEditable) {
+                    const isTyping = tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable;
+
+                    if (!isTyping && activeView.value === 'dashboard' && !showBrowseModal.value &&
+                        ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key) &&
+                        !e.target.closest?.('.db-card-sortable')) {
+                        e.preventDefault();
+                        focusDatabaseCard(focusedDbIndex.value);
+                        return;
+                    }
+
+                    if (!isTyping) {
                         if (e.key.toLowerCase() === 'c') isCHeld.value = true;
                     }
 
@@ -1204,6 +1273,9 @@
                 openTabs, activeTabId, activeTab, activeView, activeDb, activateTab, closeTab, openDatabaseTab, switchToDashboardTab, clearActiveTable,
                 // Dashboard
                 databases, newDbName, isAdding, addDb, removeDb,
+                isRefreshingStatuses, fetchStatuses,
+                onlineDatabaseCount, offlineDatabaseCount, checkingDatabaseCount,
+                focusedDbIndex, focusDatabaseCard, handleDatabaseCardKeydown,
                 draggedDbIndex, startDatabaseDrag, moveDatabaseDrag, endDatabaseDrag,
                 isImporting, fileInput, importDbName, triggerFileInput, handleImport, exportDb,
                 showBrowseModal, remoteDatabases, isLoadingRemote, openBrowseModal, addRemoteDb,

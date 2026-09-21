@@ -1,23 +1,32 @@
 <!-- Dashboard View Component: Displays connected databases and connection tools -->
-<div class="h-full flex flex-col p-8 relative overflow-y-auto">
+<div class="h-full min-h-0 flex flex-col p-8 pb-0 relative overflow-x-hidden overflow-y-auto overscroll-y-contain dashboard-scroll">
     <div class="absolute top-10 left-10 w-64 h-64 bg-purple-200 dark:bg-purple-900/20 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob pointer-events-none"></div>
     <div class="absolute top-10 right-10 w-64 h-64 bg-brand-200 dark:bg-brand-900/20 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob pointer-events-none" style="animation-delay: 2s"></div>
 
-    <div class="max-w-7xl w-full mx-auto z-10 flex flex-col min-h-full">
+    <div class="max-w-7xl w-full mx-auto z-10 flex flex-col min-h-full shrink-0 pb-16">
         <!-- Dashboard Top Header Toolbar -->
-        <div class="flex items-center justify-between mb-8 flex-wrap gap-4">
-            <div>
-                <h2 class="text-3xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">Databases</h2>
+        <div class="flex items-center justify-between mb-8 flex-wrap xl:flex-nowrap gap-4">
+            <div class="shrink-0">
+                <div class="flex items-center gap-2.5">
+                    <h2 class="text-3xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">Databases</h2>
+                </div>
                 <p class="text-slate-500 dark:text-slate-400 mt-1">Manage your connected {{ 'PostgreSQL' if profile.engine == 'postgresql' else 'MySQL' }} databases</p>
             </div>
 
-            <div class="flex gap-4 items-center flex-wrap">
-                <button @click="openBrowseModal" class="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 font-medium hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm flex items-center gap-1.5 text-sm transition-colors">
-                    <i class="ph-duotone ph-magnifying-glass"></i> Browse Server
-                </button>
+            <div class="flex gap-3 items-center flex-wrap xl:flex-nowrap justify-end">
+                <div class="flex items-center gap-2">
+                    <button @click="fetchStatuses" :disabled="isRefreshingStatuses || !databases.length"
+                            class="w-9 h-9 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 hover:border-brand-300 dark:hover:border-brand-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm transition-colors"
+                            title="Refresh database status and latency" aria-label="Refresh database status and latency">
+                        <i class="ph-bold ph-arrows-clockwise" :class="isRefreshingStatuses ? 'animate-spin' : ''"></i>
+                    </button>
+                    <button @click="openBrowseModal" class="w-40 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 font-medium hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm flex items-center justify-center gap-1.5 text-sm transition-colors">
+                        <i class="ph-duotone ph-magnifying-glass"></i> Browse Server
+                    </button>
+                </div>
 
-                <div class="flex gap-2 items-center bg-white dark:bg-slate-900 p-1 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800">
-                    <input v-model="newDbName" @keyup.enter="addDb" type="text" placeholder="Connect to database..." class="px-3 py-1.5 border-none bg-transparent text-sm focus:outline-none focus:ring-0 w-48 dark:text-slate-200" />
+                <div class="w-72 flex gap-2 items-center bg-white dark:bg-slate-900 p-1 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800">
+                    <input v-model="newDbName" @keyup.enter="addDb" type="text" placeholder="Connect to database..." class="min-w-0 flex-1 px-3 py-1.5 border-none bg-transparent text-sm focus:outline-none focus:ring-0 dark:text-slate-200" />
                     <button @click="addDb" :disabled="isAdding" class="px-3 py-1.5 rounded-lg bg-brand-600 text-white font-medium hover:bg-brand-700 shadow-sm flex items-center gap-1.5 disabled:opacity-50 text-sm">
                         <i v-if="isAdding" class="ph ph-spinner animate-spin"></i>
                         <i v-else class="ph-bold ph-link"></i> Connect
@@ -44,10 +53,24 @@
             <p class="text-sm text-slate-500 dark:text-slate-400 mt-1 text-center max-w-sm">Enter a database name in the input above to connect and start browsing.</p>
         </div>
 
+        <!-- Dashboard Summary -->
+        <div v-if="databases.length" class="mb-4 flex items-center gap-2 text-sm font-medium text-slate-500 dark:text-slate-400" aria-live="polite">
+            <span>{% raw %}{{ databases.length }}{% endraw %} databases</span>
+            <span class="text-slate-300 dark:text-slate-700">·</span>
+            <span class="inline-flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>{% raw %}{{ onlineDatabaseCount }}{% endraw %} online</span>
+            <span class="text-slate-300 dark:text-slate-700">·</span>
+            <span class="inline-flex items-center gap-1.5" :class="offlineDatabaseCount ? 'text-red-600 dark:text-red-400' : ''"><span class="w-1.5 h-1.5 rounded-full" :class="offlineDatabaseCount ? 'bg-red-500' : 'bg-slate-300 dark:bg-slate-600'"></span>{% raw %}{{ offlineDatabaseCount }}{% endraw %} offline</span>
+            <template v-if="checkingDatabaseCount">
+                <span class="text-slate-300 dark:text-slate-700">·</span>
+                <span class="inline-flex items-center gap-1.5"><i class="ph ph-spinner animate-spin"></i>{% raw %}{{ checkingDatabaseCount }}{% endraw %} checking</span>
+            </template>
+        </div>
+
         <!-- Database Cards Grid -->
         <div v-if="databases.length" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
             <div v-for="(db, dbIndex) in databases" :key="db.name" :data-db-card="db.name"
                  @dragover="moveDatabaseDrag($event, dbIndex)" @drop.prevent="endDatabaseDrag" @dragend="endDatabaseDrag"
+                 @focus="focusedDbIndex = dbIndex" @keydown="handleDatabaseCardKeydown($event, dbIndex)" tabindex="0"
                  class="db-card-sortable db-card-accent relative overflow-hidden bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200/80 dark:border-slate-800 hover:-translate-y-0.5 hover:border-brand-300 dark:hover:border-brand-700 hover:shadow-lg hover:shadow-slate-200/60 dark:hover:shadow-black/20 transition-all group cursor-pointer"
                  @click="(db.accessible || db.accessible === null) ? openDatabaseTab(db.name) : null"
                  :class="db.accessible === false ? 'opacity-80' : ''"
