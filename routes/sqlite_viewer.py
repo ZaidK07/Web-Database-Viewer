@@ -142,7 +142,8 @@ def get_table_data(file_id, tablename):
             
             cursor = conn.cursor()
             cursor.execute(count_query, params)
-            total = cursor.fetchone()['total']
+            count_res = cursor.fetchone()
+            total = int(count_res['total'] if count_res and 'total' in count_res else 0)
             sort_col = request.args.get('sort')
             sort_dir = request.args.get('dir', 'asc').upper()
             if sort_col in columns:
@@ -151,7 +152,7 @@ def get_table_data(file_id, tablename):
             cursor.execute(query, params + [limit, offset])
             rows = [dict(r) for r in cursor.fetchall()]
         return jsonify(rows=rows, total=total, page=page, limit=limit,
-                       pages=(total + limit - 1) // limit)
+                       pages=max(1, (total + limit - 1) // limit) if total > 0 else 1)
     except Exception as error:
         return api_error(error)
 

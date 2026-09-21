@@ -1,6 +1,7 @@
 import os
 import subprocess
 import pymysql
+from pymysql.constants import CLIENT
 
 
 class MySQLAdapter:
@@ -17,6 +18,7 @@ class MySQLAdapter:
             config['cursorclass'] = pymysql.cursors.DictCursor
         if timeout:
             config['connect_timeout'] = timeout
+        config['client_flag'] = CLIENT.MULTI_STATEMENTS
         return pymysql.connect(**config)
 
     @staticmethod

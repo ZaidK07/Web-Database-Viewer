@@ -1,6 +1,7 @@
 import csv
 import io
 import os
+import re
 import subprocess
 import tempfile
 from flask import (
@@ -176,14 +177,9 @@ def get_table_data(profile_name, dbname, tablename):
                 count_query += clause
                 params = [f'%{search}%'] * len(columns)
 
-            # Optimization 2: Fast / Approximate COUNT(*) for unfiltered tables
-            total = None
-            if not has_filter and hasattr(adapter, 'approximate_row_count'):
-                total = adapter.approximate_row_count(conn, dbname, tablename)
-
-            if total is None:
-                cursor.execute(count_query, params)
-                total = cursor.fetchone()['total']
+            cursor.execute(count_query, params)
+            count_res = cursor.fetchone()
+            total = int(count_res['total'] if count_res and 'total' in count_res else 0)
 
             sort_col = request.args.get('sort')
             sort_dir = request.args.get('dir', 'asc').upper()
@@ -193,7 +189,7 @@ def get_table_data(profile_name, dbname, tablename):
             cursor.execute(query, params + [limit, offset])
             rows = cursor.fetchall()
         return jsonify(rows=rows, total=total, page=page, limit=limit,
-                       pages=(total + limit - 1) // limit)
+                       pages=max(1, (total + limit - 1) // limit) if total > 0 else 1)
     except Exception as error:
         return api_error(error)
 
@@ -364,19 +360,44 @@ def import_db(profile_name):
 @databases_bp.route('/api/p/<profile_name>/sql', methods=['POST'])
 def execute_sql(profile_name):
     data = request.get_json(silent=True) or {}
-    dbname, query = data.get('dbname'), data.get('query')
+    dbname = data.get('dbname')
+    query = (data.get('query') or '').strip()
     if not query:
         return api_error('Query is required', 400)
     try:
         adapter = get_adapter(profile_name)
+
+        # Detect USE <database> statement
+        use_match = re.match(r'^\s*USE\s+[`"]?([a-zA-Z0-9_$]+)[`"]?\s*;?\s*(.*)$', query, re.IGNORECASE | re.DOTALL)
+        if use_match:
+            dbname = use_match.group(1)
+            remaining_query = use_match.group(2).strip()
+            if not remaining_query:
+                with adapter.connect(dbname):
+                    pass
+                return jsonify(success=True, affected_rows=0, is_select=False, dbname=dbname,
+                               message=f'Database changed to {dbname}')
+            query = remaining_query
+
+        # If dbname is not specified, attempt to infer from profile databases or query
+        if not dbname:
+            profile = require_profile(profile_name)
+            profile_dbs = profile.get('databases', [])
+            for db in profile_dbs:
+                if re.search(r'\b' + re.escape(db) + r'\b\.', query):
+                    dbname = db
+                    break
+            if not dbname and len(profile_dbs) == 1:
+                dbname = profile_dbs[0]
+
         with adapter.connect(dbname) as conn, conn.cursor() as cursor:
             cursor.execute(query)
             if cursor.description:
                 rows = cursor.fetchall()
-                return jsonify(success=True, rows=rows, is_select=True)
+                return jsonify(success=True, rows=rows, is_select=True, dbname=dbname)
             affected = cursor.rowcount
             conn.commit()
-            return jsonify(success=True, affected_rows=affected, is_select=False)
+            return jsonify(success=True, affected_rows=affected, is_select=False, dbname=dbname)
     except Exception as error:
         return api_error(error)
 

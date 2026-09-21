@@ -580,6 +580,7 @@
         },
         setup() {
             const baseSetup = window.baseAppSetup();
+            baseSetup.dbList.value = (window.INITIAL_DATABASES || []).map(db => typeof db === 'string' ? { name: db } : db);
             baseSetup.sqlDb.value = DBNAME;
             
             // Resizable Sidebar State with robust localStorage persistence
