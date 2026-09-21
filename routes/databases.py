@@ -40,7 +40,7 @@ def index(profile_name):
         return redirect(url_for('profiles.profile_selector'))
 
 
-@databases_bp.route('/p/<profile_name>/db/<dbname>')
+@databases_bp.route('/p/<profile_name>/db/<dbname>', strict_slashes=False)
 @databases_bp.route('/p/<profile_name>/db/<dbname>/table/<tablename>')
 def database_view(profile_name, dbname, tablename=None):
     try:
@@ -84,7 +84,11 @@ def remote_databases(profile_name):
         if not name:
             return api_error('Database name required', 400)
         adapter.create_database(name)
-        return jsonify(success=True, name=name)
+        databases = get_db_list(profile_name)
+        if name not in databases:
+            databases.append(name)
+            save_db_list(profile_name, databases)
+        return jsonify(success=True, name=name, accessible=True)
     except Exception as error:
         return api_error(error)
 

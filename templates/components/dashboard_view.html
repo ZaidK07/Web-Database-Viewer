@@ -45,33 +45,40 @@
         </div>
 
         <!-- Database Cards Grid -->
-        <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4 gap-6">
-            <div v-for="db in databases" :key="db.name"
-                 class="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-sm border border-slate-100 dark:border-slate-800 hover:shadow-md dark:hover:shadow-indigo-900/20 transition-all relative group cursor-pointer"
+        <div v-if="databases.length" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+            <div v-for="(db, dbIndex) in databases" :key="db.name" :data-db-card="db.name"
+                 @dragover="moveDatabaseDrag($event, dbIndex)" @drop.prevent="endDatabaseDrag" @dragend="endDatabaseDrag"
+                 class="db-card-sortable db-card-accent relative overflow-hidden bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200/80 dark:border-slate-800 hover:-translate-y-0.5 hover:border-brand-300 dark:hover:border-brand-700 hover:shadow-lg hover:shadow-slate-200/60 dark:hover:shadow-black/20 transition-all group cursor-pointer"
                  @click="(db.accessible || db.accessible === null) ? openDatabaseTab(db.name) : null"
-                 :class="db.accessible === false ? 'opacity-75' : ''">
-
-                <div class="flex justify-between items-start mb-4">
-                    <div class="w-12 h-12 rounded-full flex items-center justify-center" :class="db.accessible ? 'bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400' : 'bg-red-50 dark:bg-red-900/30 text-red-500'">
-                        <i class="ph-duotone ph-database text-2xl"></i>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <span class="px-2.5 py-1 rounded-full text-xs font-medium border flex items-center gap-1" :class="db.accessible === null ? 'bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700' : (db.accessible ? 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800' : 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800')">
+                 :class="db.accessible === false ? 'opacity-80' : ''"
+                 :style="{'--db-card-accent': db.accessible === null ? '#cbd5e1' : (db.accessible ? 'linear-gradient(180deg, #22d3ee 0%, #3b82f6 48%, #8b5cf6 100%)' : 'linear-gradient(180deg, #fb7185, #ef4444)')}">
+                <div class="p-5">
+                    <div class="flex items-center justify-between gap-3">
+                        <h3 class="font-bold text-lg text-slate-800 dark:text-slate-100 truncate" :title="db.name">{% raw %}{{ db.name }}{% endraw %}</h3>
+                        <span class="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide shrink-0" :class="db.accessible === null ? 'text-slate-500' : (db.accessible ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400')">
                             <i v-if="db.accessible === null" class="ph ph-spinner animate-spin"></i>
-                            <i v-else-if="!db.accessible" class="ph-fill ph-warning-circle"></i>
-                            {% raw %}{{ db.accessible === null ? 'Checking...' : (db.accessible ? 'Connected' : 'Unreachable') }}{% endraw %}
+                            <span v-else class="w-1.5 h-1.5 rounded-full" :class="db.accessible ? 'bg-emerald-500' : 'bg-red-500'"></span>
+                            {% raw %}{{ db.accessible === null ? 'Checking' : (db.accessible ? 'Online' : 'Offline') }}{% endraw %}
                         </span>
-                        <button @click.stop="exportDb(db.name)" class="text-slate-300 dark:text-slate-600 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors p-1" title="Export Database">
-                            <i class="ph ph-download-simple text-lg"></i>
-                        </button>
-                        <button @click.stop="removeDb(db.name)" class="text-slate-300 dark:text-slate-600 hover:text-amber-500 dark:hover:text-amber-400 transition-colors p-1" title="Remove from list">
-                            <i class="ph ph-minus-circle text-lg"></i>
-                        </button>
+                    </div>
+                    <div class="mt-7 flex items-center justify-between">
+                        <div class="flex items-center gap-1.5 text-xs font-semibold tabular-nums"
+                             :class="db.accessible === false ? 'text-slate-400 dark:text-slate-600' : (db.latencyMs == null ? 'text-slate-400 dark:text-slate-500' : (db.latencyMs <= 200 ? 'text-emerald-600 dark:text-emerald-400' : (db.latencyMs < 1000 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400')))">
+                            <i class="ph-bold ph-gauge"></i>
+                            <span>{% raw %}{{ db.accessible === false ? 'No response' : (db.latencyMs == null ? 'Measuring…' : db.latencyMs + ' ms') }}{% endraw %}</span>
+                        </div>
+                        <div class="flex items-center gap-1 text-slate-400 dark:text-slate-500">
+                            <button draggable="true" @dragstart.stop="startDatabaseDrag($event, dbIndex)" @click.stop
+                                    class="db-drag-handle w-8 h-8 rounded-lg cursor-grab active:cursor-grabbing hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors"
+                                    title="Drag to reorder" aria-label="Drag to reorder database card">
+                                <i class="ph-bold ph-dots-six-vertical"></i>
+                            </button>
+                            <button @click.stop="exportDb(db.name)" class="w-8 h-8 rounded-lg hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-950/40 dark:hover:text-indigo-400 transition-colors" title="Export database"><i class="ph ph-download-simple"></i></button>
+                            <button @click.stop="removeDb(db.name)" class="w-8 h-8 rounded-lg hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400 transition-colors" title="Remove from list"><i class="ph ph-minus-circle"></i></button>
+                            <span class="w-8 h-8 flex items-center justify-center"><i class="ph ph-arrow-right group-hover:text-brand-500 group-hover:translate-x-0.5 transition-all"></i></span>
+                        </div>
                     </div>
                 </div>
-
-                <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100 mb-1 truncate" :title="db.name">{% raw %}{{ db.name }}{% endraw %}</h3>
-                <p class="text-sm text-slate-500 dark:text-slate-400">Click to open database workspace</p>
             </div>
         </div>
     </div>
@@ -79,7 +86,7 @@
     <!-- Browse Server Modal -->
     <div v-if="showBrowseModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div class="absolute inset-0 bg-slate-900/40 dark:bg-slate-950/60 backdrop-blur-sm" @click="showBrowseModal = false"></div>
-        <div class="relative bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-4xl max-h-[80vh] flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800">
+        <div class="relative bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-6xl max-h-[80vh] flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800">
             <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50">
                 <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                     <i class="ph-duotone ph-hard-drives text-brand-600 text-xl"></i>
@@ -108,21 +115,21 @@
                     No databases found on this server.
                 </div>
 
-                <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                     <div v-for="dbName in remoteDatabases" :key="dbName" class="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-between hover:border-brand-300 dark:hover:border-brand-500 transition-colors">
                         <div class="flex items-center gap-3 min-w-0">
                             <i class="ph-duotone ph-database text-slate-400 dark:text-slate-500 text-xl shrink-0"></i>
                             <span class="font-medium text-slate-700 dark:text-slate-200 break-all" :title="dbName">{% raw %}{{ dbName }}{% endraw %}</span>
                         </div>
                         <div class="flex items-center gap-2 shrink-0">
-                            <button v-if="databases.find(d => d.name === dbName)" disabled class="text-xs font-semibold px-2.5 py-1 rounded-md bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-600 cursor-not-allowed">
-                                Added
+                            <button v-if="databases.find(d => d.name === dbName)" disabled class="w-9 h-9 inline-flex items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-600 cursor-not-allowed" title="Already added" aria-label="Already added">
+                                <i class="ph-bold ph-check"></i>
                             </button>
-                            <button v-else @click="addRemoteDb(dbName)" class="text-xs font-semibold px-2.5 py-1 rounded-md bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-400 border border-brand-200 dark:border-brand-800 hover:bg-brand-600 hover:text-white dark:hover:text-white hover:border-brand-600 transition-colors">
-                                Add
+                            <button v-else @click="addRemoteDb(dbName)" class="w-9 h-9 inline-flex items-center justify-center rounded-lg bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-400 border border-brand-200 dark:border-brand-800 hover:bg-brand-600 hover:text-white dark:hover:text-white hover:border-brand-600 transition-colors" title="Add database" aria-label="Add database">
+                                <i class="ph-bold ph-plus"></i>
                             </button>
-                            <button @click="deleteRemoteDb(dbName)" class="text-xs font-semibold px-2.5 py-1 rounded-md bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800 hover:bg-red-600 hover:text-white dark:hover:text-white hover:border-red-600 transition-colors" title="Drop Database">
-                                Delete
+                            <button @click="deleteRemoteDb(dbName)" class="w-9 h-9 inline-flex items-center justify-center rounded-lg bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800 hover:bg-red-600 hover:text-white dark:hover:text-white hover:border-red-600 transition-colors" title="Delete database" aria-label="Delete database">
+                                <i class="ph-bold ph-trash"></i>
                             </button>
                         </div>
                     </div>

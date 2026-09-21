@@ -28,6 +28,7 @@
     .data-table {
         table-layout: fixed;
         width: max-content;
+        min-width: 100%;
         border-collapse: separate;
         border-spacing: 0;
     }
@@ -42,8 +43,14 @@
         top: 0;
         z-index: 20;
     }
+    .data-table tbody td {
+        border-bottom: 1px solid #e2e8f0;
+    }
     .dark .data-table thead th {
         background-color: #1e293b;
+    }
+    .dark .data-table tbody td {
+        border-bottom-color: #1e293b;
     }
     .batch-col {
         width: 40px !important;
@@ -60,6 +67,30 @@
         padding-left: 0.5rem !important;
         padding-right: 0.5rem !important;
         text-align: center !important;
+    }
+    .db-card-accent::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        right: 0;
+        width: 42px;
+        height: 42px;
+        z-index: 1;
+        pointer-events: none;
+        border-radius: 0 1rem 0 0;
+        background: var(--db-card-accent);
+        clip-path: polygon(30% 0, 100% 0, 100% 70%);
+        filter: drop-shadow(-2px 2px 4px color-mix(in srgb, var(--db-card-accent) 20%, transparent));
+    }
+    .db-card-sortable.is-dragging {
+        opacity: 0.16;
+        transform: none !important;
+        border-color: #38bdf8;
+        box-shadow: 0 18px 36px rgba(15, 23, 42, 0.14);
+    }
+    .dark .db-card-sortable.is-dragging {
+        border-color: #0ea5e9;
+        box-shadow: 0 18px 36px rgba(0, 0, 0, 0.35);
     }
 </style>
 {% endblock %}
@@ -96,6 +127,111 @@
             // Normalized database list for sidebar & SQL console
             baseSetup.dbList.value = (window.INITIAL_DATABASES || []).map(db => typeof db === 'string' ? { name: db, accessible: null } : db);
             const databases = ref(baseSetup.dbList.value);
+            const draggedDbIndex = ref(null);
+            const draggedDbName = ref(null);
+            let nextDatabaseDragMoveAt = 0;
+            const databaseOrderKey = `db-card-order:${window.location.pathname.split('/')[2] || 'default'}`;
+
+            const restoreDatabaseOrder = () => {
+                try {
+                    const saved = JSON.parse(localStorage.getItem(databaseOrderKey) || '[]');
+                    if (!Array.isArray(saved) || !saved.length) return;
+                    const rank = new Map(saved.map((name, index) => [name, index]));
+                    databases.value.sort((a, b) =>
+                        (rank.has(a.name) ? rank.get(a.name) : Number.MAX_SAFE_INTEGER) -
+                        (rank.has(b.name) ? rank.get(b.name) : Number.MAX_SAFE_INTEGER)
+                    );
+                } catch (e) {}
+            };
+
+            const saveDatabaseOrder = () => {
+                try {
+                    localStorage.setItem(databaseOrderKey, JSON.stringify(databases.value.map(db => db.name)));
+                } catch (e) {}
+            };
+
+            const databaseCardRects = () => {
+                const rects = new Map();
+                document.querySelectorAll('.db-card-sortable').forEach(card => {
+                    rects.set(card.dataset.dbCard, card.getBoundingClientRect());
+                });
+                return rects;
+            };
+
+            const animateDatabaseCards = (previousRects) => {
+                Vue.nextTick(() => {
+                    document.querySelectorAll('.db-card-sortable').forEach(card => {
+                        if (card.classList.contains('is-dragging')) return;
+                        const previous = previousRects.get(card.dataset.dbCard);
+                        if (!previous) return;
+                        const current = card.getBoundingClientRect();
+                        const deltaX = previous.left - current.left;
+                        const deltaY = previous.top - current.top;
+                        if (!deltaX && !deltaY) return;
+                        card.style.transition = 'none';
+                        card.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+                        requestAnimationFrame(() => requestAnimationFrame(() => {
+                            card.style.transition = 'transform 420ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 250ms ease, border-color 250ms ease';
+                            card.style.transform = '';
+                        }));
+                    });
+                });
+            };
+
+            const startDatabaseDrag = (event, index) => {
+                draggedDbIndex.value = index;
+                draggedDbName.value = databases.value[index].name;
+                nextDatabaseDragMoveAt = 0;
+                event.dataTransfer.effectAllowed = 'move';
+                event.dataTransfer.setData('text/plain', databases.value[index].name);
+                const card = event.currentTarget.closest('.db-card-sortable');
+                if (card) {
+                    const rect = card.getBoundingClientRect();
+                    event.dataTransfer.setDragImage(card, event.clientX - rect.left, event.clientY - rect.top);
+                    requestAnimationFrame(() => card.classList.add('is-dragging'));
+                }
+            };
+
+            const moveDatabaseDrag = (event, targetIndex) => {
+                event.preventDefault();
+                if (draggedDbIndex.value === null || draggedDbIndex.value === targetIndex) return;
+                if (performance.now() < nextDatabaseDragMoveAt) return;
+
+                const sourceCard = document.querySelector(`.db-card-sortable[data-db-card="${CSS.escape(draggedDbName.value)}"]`);
+                const targetCard = event.currentTarget;
+                if (!sourceCard || !targetCard || sourceCard === targetCard) return;
+
+                const sourceRect = sourceCard.getBoundingClientRect();
+                const targetRect = targetCard.getBoundingClientRect();
+                const sameRow = Math.abs(sourceRect.top - targetRect.top) < 8;
+                const movingForward = targetIndex > draggedDbIndex.value;
+                const crossedMidpoint = sameRow
+                    ? (movingForward
+                        ? event.clientX > targetRect.left + targetRect.width / 2
+                        : event.clientX < targetRect.left + targetRect.width / 2)
+                    : (movingForward
+                        ? event.clientY > targetRect.top + targetRect.height / 2
+                        : event.clientY < targetRect.top + targetRect.height / 2);
+                if (!crossedMidpoint) return;
+
+                const previousRects = databaseCardRects();
+                const destinationIndex = draggedDbIndex.value + (movingForward ? 1 : -1);
+                const [moved] = databases.value.splice(draggedDbIndex.value, 1);
+                databases.value.splice(destinationIndex, 0, moved);
+                draggedDbIndex.value = destinationIndex;
+                nextDatabaseDragMoveAt = performance.now() + 135;
+                animateDatabaseCards(previousRects);
+            };
+
+            const endDatabaseDrag = () => {
+                document.querySelectorAll('.db-card-sortable.is-dragging').forEach(card => card.classList.remove('is-dragging'));
+                draggedDbIndex.value = null;
+                draggedDbName.value = null;
+                nextDatabaseDragMoveAt = 0;
+                saveDatabaseOrder();
+            };
+
+            restoreDatabaseOrder();
 
             // -------------------------------------------------------------
             // SPA Tabs State Management
@@ -151,9 +287,17 @@
                     if (data.success && data.statuses) {
                         databases.value.forEach(db => {
                             if (data.statuses[db.name] !== undefined) {
-                                db.accessible = Boolean(data.statuses[db.name]);
+                                const status = data.statuses[db.name];
+                                if (status && typeof status === 'object') {
+                                    db.accessible = Boolean(status.accessible);
+                                    db.latencyMs = Number.isFinite(status.latency_ms) ? status.latency_ms : null;
+                                } else {
+                                    db.accessible = Boolean(status);
+                                    db.latencyMs = null;
+                                }
                             } else {
                                 db.accessible = false;
+                                db.latencyMs = null;
                             }
                         });
                         return;
@@ -163,6 +307,7 @@
                 }
                 databases.value.forEach(db => {
                     if (db.accessible === null) db.accessible = false;
+                    db.latencyMs = null;
                 });
             };
 
@@ -322,8 +467,14 @@
                     if(data.error) {
                         baseSetup.showToast(data.error, 'error');
                     } else {
-                        baseSetup.showToast(`Database ${name} created successfully`);
-                        remoteDatabases.value.unshift(name);
+                        if (!remoteDatabases.value.includes(data.name)) {
+                            remoteDatabases.value.unshift(data.name);
+                        }
+                        if (!databases.value.find(db => db.name === data.name)) {
+                            databases.value.push({ name: data.name, accessible: data.accessible !== false });
+                            baseSetup.dbList.value = databases.value;
+                        }
+                        baseSetup.showToast(`Database ${data.name} created and added`);
                         newRemoteDbName.value = '';
                     }
                 } catch(e) {
@@ -957,6 +1108,20 @@
                 activateTab('dashboard', true);
             };
 
+            const clearActiveTable = (pushState = true) => {
+                if (!activeDb.value) return;
+                activeTable.value = null;
+                baseSetup.currentTable.value = null;
+                if (activeTab.value?.type === 'db') activeTab.value.activeTable = null;
+                activeFilter.value = null;
+                searchQuery.value = '';
+                rows.value = [];
+                if (pushState) {
+                    const url = `${window.PROFILE_ROOT}db/${encodeURIComponent(activeDb.value)}`;
+                    window.history.pushState({ tabId: activeTabId.value, dbname: activeDb.value, table: null }, '', url);
+                }
+            };
+
             // Override baseSetup.goTo for SPA within current profile
             const spaGoTo = (url) => {
                 if (url === '/' || url === window.PROFILE_ROOT) {
@@ -966,7 +1131,8 @@
                 const dbMatch = url.match(/\/db\/([^/?#]+)/);
                 if (dbMatch) {
                     const dbName = decodeURIComponent(dbMatch[1]);
-                    openDatabaseTab(dbName, null, true);
+                    if (activeDb.value === dbName) clearActiveTable(true);
+                    else openDatabaseTab(dbName, null, true);
                     return;
                 }
                 window.location.href = url;
@@ -1035,9 +1201,10 @@
             return {
                 ...baseSetup,
                 // SPA Views
-                openTabs, activeTabId, activeTab, activeView, activeDb, activateTab, closeTab, openDatabaseTab, switchToDashboardTab,
+                openTabs, activeTabId, activeTab, activeView, activeDb, activateTab, closeTab, openDatabaseTab, switchToDashboardTab, clearActiveTable,
                 // Dashboard
                 databases, newDbName, isAdding, addDb, removeDb,
+                draggedDbIndex, startDatabaseDrag, moveDatabaseDrag, endDatabaseDrag,
                 isImporting, fileInput, importDbName, triggerFileInput, handleImport, exportDb,
                 showBrowseModal, remoteDatabases, isLoadingRemote, openBrowseModal, addRemoteDb,
                 newRemoteDbName, isCreatingRemote, createRemoteDb, deleteRemoteDb,

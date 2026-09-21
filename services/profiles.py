@@ -1,4 +1,5 @@
 import json
+import time
 import os
 import sqlite3
 
@@ -182,15 +183,21 @@ def check_dbs_accessibility(profile_name, database_names):
 
     if engine == 'mysql':
         try:
+            started_at = time.perf_counter()
             with adapter.connect(dict_rows=False) as conn, conn.cursor() as cursor:
                 cursor.execute('SHOW DATABASES')
                 accessible_set = {row[0] for row in cursor.fetchall()}
-            return {name: (name in accessible_set) for name in database_names}
+            latency_ms = max(1, round((time.perf_counter() - started_at) * 1000))
+            return {
+                name: {'accessible': name in accessible_set, 'latency_ms': latency_ms}
+                for name in database_names
+            }
         except Exception:
-            return {name: False for name in database_names}
+            return {name: {'accessible': False, 'latency_ms': None} for name in database_names}
 
     if engine in ('postgres', 'postgresql'):
         try:
+            started_at = time.perf_counter()
             with adapter.connect(dict_rows=True) as conn, conn.cursor() as cursor:
                 cursor.execute('''
                     SELECT datname, has_database_privilege(datname, 'CONNECT') AS can_connect
@@ -198,13 +205,21 @@ def check_dbs_accessibility(profile_name, database_names):
                     WHERE datallowconn
                 ''')
                 db_privs = {row['datname']: bool(row['can_connect']) for row in cursor.fetchall()}
-            return {name: bool(db_privs.get(name, False)) for name in database_names}
+            latency_ms = max(1, round((time.perf_counter() - started_at) * 1000))
+            return {
+                name: {'accessible': bool(db_privs.get(name, False)), 'latency_ms': latency_ms}
+                for name in database_names
+            }
         except Exception:
-            return {name: False for name in database_names}
+            return {name: {'accessible': False, 'latency_ms': None} for name in database_names}
 
     # Fallback for any other adapter
     results = {}
     for name in database_names:
-        results[name] = check_db_accessibility(profile_name, name)
+        started_at = time.perf_counter()
+        accessible = check_db_accessibility(profile_name, name)
+        results[name] = {
+            'accessible': accessible,
+            'latency_ms': max(1, round((time.perf_counter() - started_at) * 1000)) if accessible else None,
+        }
     return results
-
