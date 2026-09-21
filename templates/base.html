@@ -77,15 +77,19 @@
                 {% if profile_name %}
                 <nav class="flex items-center gap-1.5 min-w-0 text-sm overflow-x-auto scrollbar-none py-1" aria-label="Breadcrumb">
                     <i class="ph-bold ph-caret-right text-[10px] text-slate-400 dark:text-slate-600 shrink-0"></i>
-                    <a href="{{ url_for('databases.index', profile_name=profile_name) }}" class="px-2 py-1 rounded-md text-slate-600 dark:text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-slate-200/70 dark:hover:bg-slate-800 transition-colors shrink-0 whitespace-nowrap font-medium" title="{{ profile_name }}">{{ profile_name }}</a>
-                    {% if dbname is defined %}
-                    <i class="ph-bold ph-caret-right text-[10px] text-slate-400 dark:text-slate-600 shrink-0"></i>
-                    <a href="{{ url_for('databases.database_view', profile_name=profile_name, dbname=dbname) }}" class="px-2 py-1 rounded-md text-slate-600 dark:text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-slate-200/70 dark:hover:bg-slate-800 transition-colors shrink-0 whitespace-nowrap font-medium" title="{{ dbname }}">{{ dbname }}</a>
+                    <a @click.prevent="goTo('/')" :href="'/p/{{ profile_name }}/'" class="px-2 py-1 rounded-md text-slate-600 dark:text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-slate-200/70 dark:hover:bg-slate-800 transition-colors shrink-0 whitespace-nowrap font-medium" title="{{ profile_name }}">{{ profile_name }}</a>
+                    <template v-if="activeDb">
+                        <i class="ph-bold ph-caret-right text-[10px] text-slate-400 dark:text-slate-600 shrink-0"></i>
+                        <a @click.prevent="goTo('/db/' + encodeURIComponent(activeDb))" :href="'/p/{{ profile_name }}/db/' + encodeURIComponent(activeDb)" class="px-2 py-1 rounded-md text-slate-600 dark:text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-slate-200/70 dark:hover:bg-slate-800 transition-colors shrink-0 whitespace-nowrap font-medium" :title="activeDb">{% raw %}{{ activeDb }}{% endraw %}</a>
+                    </template>
+                    <template v-else-if="typeof dbname !== 'undefined' && dbname">
+                        <i class="ph-bold ph-caret-right text-[10px] text-slate-400 dark:text-slate-600 shrink-0"></i>
+                        <span class="px-2 py-1 rounded-md text-slate-600 dark:text-slate-400 font-medium whitespace-nowrap shrink-0">{{ dbname }}</span>
+                    </template>
                     <template v-if="currentTable">
                         <i class="ph-bold ph-caret-right text-[10px] text-slate-400 dark:text-slate-600 shrink-0"></i>
                         <span class="px-2.5 py-1 rounded-md bg-slate-200 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold whitespace-nowrap shrink-0" :title="currentTable">{% raw %}{{ currentTable }}{% endraw %}</span>
                     </template>
-                    {% endif %}
                 </nav>
                 {% endif %}
             </div>
@@ -960,7 +964,16 @@
                 setTimeout(() => toast.value.show = false, 3000);
             };
 
+            let customNavigator = null;
+            const setCustomNavigator = (fn) => {
+                customNavigator = fn;
+            };
+
             const goTo = (url) => {
+                if (typeof customNavigator === 'function') {
+                    customNavigator(url);
+                    return;
+                }
                 if (window.PROFILE_NAME && url === '/') window.location.href = window.PROFILE_ROOT;
                 else if (window.PROFILE_NAME && url.startsWith('/db/')) window.location.href = window.PROFILE_ROOT + url.slice(1);
                 else window.location.href = url;
@@ -1086,7 +1099,7 @@
                 isDark, toggleDarkMode, showFeaturesModal, isOnDashboard,
                 showSqlPanel, sqlPosition, setSqlPosition, sqlPanelWidth, sqlPanelHeight, isResizingSql, startSqlResizeRight, startSqlResizeBottom, sqlDb, sqlQuery, sqlLoading, sqlError, sqlSuccess, sqlRows, sqlIsSelect, sqlAffected, sqlResultTime, dbList, currentTable, executeSql,
                 showCmdK, cmdKSearch, cmdKIndex, cmdKInput, cmdKList, filteredCmdKDbList, cmdKNav, cmdKExecute,
-                toast, showToast, goTo,
+                toast, showToast, goTo, setCustomNavigator,
                 profiles, activeProfile, showProfileModal, showProfileDropdown, showEngineDropdown, setEngine, newProfile, isEditingProfile, editingProfileOriginalName, fetchProfiles, switchProfile, handleProfileSwitch, handleEngineChange, createProfile, updateProfile, deleteProfile, startEditProfile, cancelEditProfile,
                 confirmModal, customConfirm
             };

@@ -1,0 +1,530 @@
+<div class="h-full flex bg-[#eaedf2] dark:bg-slate-950 relative overflow-hidden transition-colors duration-300">
+
+    <!-- Command+J Database Objects Modal -->
+    <div v-if="showCmdJ" class="fixed inset-0 z-[60] flex items-start justify-center pt-[15vh]">
+        <div class="absolute inset-0 bg-slate-900/20 dark:bg-slate-950/40 backdrop-blur-sm" @click="showCmdJ = false"></div>
+        <div class="relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-xl shadow-2xl flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800">
+            <div class="flex items-center px-4 border-b border-slate-100 dark:border-slate-800 bg-indigo-50/30 dark:bg-indigo-900/10">
+                <i class="ph-duotone ph-table text-indigo-400 text-lg"></i>
+                <input ref="cmdJInput" v-model="cmdJSearch" @keydown.down.prevent="cmdJNav(1)" @keydown.up.prevent="cmdJNav(-1)" @keydown.enter.prevent="cmdJExecute" type="text" :placeholder="'Search tables and views in ' + activeDb + '...'" class="w-full px-3 py-4 text-sm focus:outline-none text-slate-800 dark:text-slate-200 bg-transparent placeholder:text-slate-400" />
+                <span class="text-[10px] font-semibold text-slate-400 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-0.5 bg-white dark:bg-slate-800 uppercase">ESC</span>
+            </div>
+            
+            <div class="max-h-80 overflow-y-auto p-2 flex flex-col gap-1 bg-white dark:bg-slate-900" ref="cmdJList">
+                <div v-if="filteredCmdJTables.length === 0" class="px-4 py-8 text-center text-sm text-slate-500">
+                    No database objects found matching "{% raw %}{{ cmdJSearch }}{% endraw %}"
+                </div>
+                <div v-for="(object, i) in filteredCmdJTables" :key="object.kind + ':' + object.name" :id="'cmdj-item-' + i" @click="cmdJSelect(object.name)" @mouseenter="cmdJIndex = i" class="px-3 py-2 rounded-lg flex items-center gap-3 cursor-pointer transition-colors" :class="cmdJIndex === i ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'">
+                    <i class="ph-duotone text-lg" :class="[object.kind === 'View' ? 'ph-eye' : 'ph-table', cmdJIndex === i ? 'text-indigo-600' : 'text-slate-400']"></i>
+                    <span class="font-medium text-sm">{% raw %}{{ object.name }}{% endraw %}</span>
+                    <span class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{% raw %}{{ object.kind }}{% endraw %}</span>
+                    <span v-if="cmdJIndex === i" class="ml-auto text-[10px] font-semibold text-indigo-500 uppercase tracking-wider">Open</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    
+    <!-- Sidebar: Tables List -->
+    <div class="border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col z-20 shrink-0 shadow-[4px_0_24px_-12px_rgba(0,0,0,0.1)] dark:shadow-none relative transition-[width] duration-0" :style="{ width: sidebarWidth + 'px' }">
+        <!-- Resizer Handle -->
+        <div @mousedown="startResize" class="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-brand-500/50 active:bg-brand-500 z-50 transition-colors"></div>
+        <div class="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center gap-3 bg-slate-50/50 dark:bg-slate-900/50">
+            <button @click="switchToDashboardTab" class="w-8 h-8 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 hover:border-brand-200 transition-colors shadow-sm shrink-0" title="Back to Databases Dashboard">
+                <i class="ph-bold ph-arrow-left"></i>
+            </button>
+            <div class="flex-1 min-w-0">
+                <h2 class="text-lg font-bold text-slate-800 dark:text-slate-200 truncate" :title="activeDb">{% raw %}{{ activeDb }}{% endraw %}</h2>
+                <p class="text-xs text-slate-500 dark:text-slate-400">Database</p>
+            </div>
+        </div>
+
+        <div class="flex-1 overflow-y-auto sidebar-scroll p-3">
+            <div v-if="schemaLoading" class="flex flex-col items-center justify-center py-10 text-slate-400">
+                <i class="ph ph-spinner animate-spin text-2xl mb-2"></i>
+                <span class="text-sm">Loading tables...</span>
+            </div>
+            <div v-else-if="schemaError" class="p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm rounded-lg border border-red-100 dark:border-red-900/50">
+                {% raw %}{{ schemaError }}{% endraw %}
+            </div>
+            <div v-else-if="tables.length === 0 && views.length === 0" class="text-center py-10 text-slate-500 text-sm">
+                No database objects found.
+            </div>
+            
+            <div v-else class="flex flex-col gap-1">
+                <div class="px-3 pt-1 pb-2 flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+                    <span>Tables</span>
+                    <span class="rounded-md bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-1.5 py-0.5 border border-slate-300/60 dark:border-slate-700">{% raw %}{{ tables.length }}{% endraw %}</span>
+                </div>
+                <div v-for="table in tables" :key="table" class="rounded-xl transition-all" :class="activeTable === table ? 'bg-brand-100/90 dark:bg-brand-950/80 shadow-sm' : 'hover:bg-slate-100 dark:hover:bg-slate-800/60'">
+                    
+                    <!-- Table Main Row -->
+                    <div class="flex items-center justify-between px-3 py-2 cursor-pointer group" @click="selectTable(table)">
+                        <div class="flex items-center gap-2.5 flex-1 min-w-0">
+                            <i class="ph-duotone ph-table text-lg" :class="activeTable === table ? 'text-brand-600 dark:text-brand-400 font-bold' : 'text-slate-500 dark:text-slate-400 group-hover:text-brand-500 dark:group-hover:text-brand-400'"></i>
+                            <span class="text-sm truncate" :class="activeTable === table ? 'text-brand-950 dark:text-white font-bold' : 'text-slate-700 dark:text-slate-300 font-medium'">{% raw %}{{ table }}{% endraw %}</span>
+                        </div>
+                        <button @click.stop="toggleSchema(table)" class="p-1 rounded text-slate-400 dark:text-slate-500 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-white dark:hover:bg-slate-800 transition-colors" title="Toggle Schema Details">
+                            <i class="ph-bold" :class="expandedSchema === table ? 'ph-caret-up' : 'ph-caret-down'"></i>
+                        </button>
+                    </div>
+
+                    <!-- Schema Expanded Details -->
+                    <div v-show="expandedSchema === table" class="px-3 pb-3 pt-1 border-t border-brand-200/60 dark:border-brand-900/50 bg-white/70 dark:bg-slate-900/50 rounded-b-xl">
+                        <div class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 flex items-center justify-between">
+                            Columns
+                            <span class="text-[10px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-slate-400 dark:text-slate-500">{% raw %}{{ schema[table]?.columns.length || 0 }}{% endraw %}</span>
+                        </div>
+                        <ul class="space-y-1.5">
+                            <li v-for="col in schema[table]?.columns" :key="col.Field" class="flex items-start justify-between gap-2 text-xs">
+                                <div class="flex items-center gap-1.5 min-w-0">
+                                    <i v-if="schema[table].primary_keys.includes(col.Field)" class="ph-fill ph-key text-yellow-500 shrink-0" title="Primary Key"></i>
+                                    <i v-else class="ph-bold ph-text-t text-slate-300 dark:text-slate-600 shrink-0"></i>
+                                    <span class="text-slate-700 dark:text-slate-300 font-medium truncate" :title="col.Field">{% raw %}{{ col.Field }}{% endraw %}</span>
+                                </div>
+                                <span class="text-slate-400 dark:text-slate-500 text-[10px] shrink-0 font-mono">{% raw %}{{ col.Type.split('(')[0] }}{% endraw %}</span>
+                            </li>
+                        </ul>
+                    </div>
+                    
+                </div>
+
+                <button v-if="views.length" @click="showViews = !showViews" type="button" class="mt-3 flex items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
+                    <span class="flex items-center gap-2"><i class="ph-duotone ph-eye text-base"></i> Views</span>
+                    <span class="flex items-center gap-2"><span class="rounded bg-slate-200/80 dark:bg-slate-800 px-1.5 py-0.5 text-slate-700 dark:text-slate-300 border border-slate-300/60 dark:border-slate-700">{% raw %}{{ views.length }}{% endraw %}</span><i class="ph-bold" :class="showViews ? 'ph-caret-up' : 'ph-caret-down'"></i></span>
+                </button>
+                <div v-if="showViews" class="flex flex-col gap-1">
+                    <div v-for="view in views" :key="view" class="rounded-xl transition-all" :class="activeTable === view ? 'bg-violet-100/90 dark:bg-violet-950/80 shadow-sm' : 'hover:bg-slate-100 dark:hover:bg-slate-800/60'">
+                        <div class="flex items-center justify-between px-3 py-2 cursor-pointer group" @click="selectTable(view)">
+                            <div class="flex items-center gap-2.5 flex-1 min-w-0">
+                                <i class="ph-duotone ph-eye text-lg" :class="activeTable === view ? 'text-violet-600 dark:text-violet-400 font-bold' : 'text-slate-500 dark:text-slate-400 group-hover:text-violet-500 dark:group-hover:text-violet-400'"></i>
+                                <span class="text-sm truncate" :class="activeTable === view ? 'text-violet-950 dark:text-white font-bold' : 'text-slate-700 dark:text-slate-300 font-medium'">{% raw %}{{ view }}{% endraw %}</span>
+                                <span class="text-[9px] font-bold uppercase tracking-wider text-violet-600 dark:text-violet-400 bg-violet-200/60 dark:bg-violet-900/40 px-1 py-0.5 rounded">View</span>
+                            </div>
+                            <button @click.stop="toggleSchema(view)" class="p-1 rounded text-slate-400 dark:text-slate-500 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-white dark:hover:bg-slate-800 transition-colors" title="Toggle Schema Details">
+                                <i class="ph-bold" :class="expandedSchema === view ? 'ph-caret-up' : 'ph-caret-down'"></i>
+                            </button>
+                        </div>
+                        <div v-show="expandedSchema === view" class="px-3 pb-3 pt-1 border-t border-violet-100/50 dark:border-violet-900/50 bg-white/50 dark:bg-slate-900/30 rounded-b-lg">
+                            <div class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 flex items-center justify-between">
+                                Columns
+                                <span class="text-[10px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-slate-400 dark:text-slate-500">{% raw %}{{ schema[view]?.columns.length || 0 }}{% endraw %}</span>
+                            </div>
+                            <ul class="space-y-1.5">
+                                <li v-for="col in schema[view]?.columns" :key="col.Field" class="flex items-start justify-between gap-2 text-xs">
+                                    <div class="flex items-center gap-1.5 min-w-0">
+                                        <i class="ph-bold ph-text-t text-slate-300 dark:text-slate-600 shrink-0"></i>
+                                        <span class="text-slate-700 dark:text-slate-300 font-medium truncate" :title="col.Field">{% raw %}{{ col.Field }}{% endraw %}</span>
+                                    </div>
+                                    <span class="text-slate-400 dark:text-slate-500 text-[10px] shrink-0 font-mono">{% raw %}{{ col.Type.split('(')[0] }}{% endraw %}</span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content Area: Data Preview or ER Diagram -->
+    <div class="flex-1 flex flex-col relative min-w-0 bg-white dark:bg-slate-950">
+        
+        <!-- ER Diagram View -->
+        <div v-if="viewMode === 'erd'" class="h-full w-full relative">
+            {% include 'components/schema_map.html' %}
+        </div>
+
+        <!-- Data Grid View -->
+        <template v-else>
+            <!-- Empty State -->
+            <div v-if="!activeTable" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-50/50 dark:bg-slate-950/50 backdrop-blur-[2px] z-10">
+                <div class="w-16 h-16 rounded-full bg-white dark:bg-slate-900 shadow-sm border border-slate-200 dark:border-slate-800 flex items-center justify-center text-slate-300 dark:text-slate-600 mb-4">
+                    <i class="ph-duotone ph-table text-3xl"></i>
+                </div>
+                <h3 class="text-lg font-medium text-slate-700 dark:text-slate-300">Select a table</h3>
+                <p class="text-sm text-slate-500 dark:text-slate-400 mt-1 mb-4">Choose a table from the sidebar to view its data.</p>
+                <button @click="viewMode = 'erd'" class="px-4 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800/60 text-indigo-700 dark:text-indigo-300 text-xs font-semibold flex items-center gap-2 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-colors shadow-2xs">
+                    <i class="ph-bold ph-tree-structure text-sm"></i>
+                    <span>Explore Visual Schema &amp; ER Map</span>
+                </button>
+            </div>
+
+            <!-- Table View Content (Shown only when activeTable is set) -->
+            <div v-if="activeTable" class="h-full flex flex-col w-full bg-white dark:bg-slate-900 shadow-sm border-l border-slate-200 dark:border-slate-800 transition-colors duration-300 min-w-0">
+                
+                <!-- Table Header -->
+                <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900 shrink-0">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <h2 class="text-xl font-bold text-slate-800 dark:text-slate-100 tracking-tight truncate max-w-[180px] sm:max-w-[260px] xl:max-w-[360px]" :title="activeTable">{% raw %}{{ activeTable }}{% endraw %}</h2>
+                        <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold shrink-0" :class="views.includes(activeTable) ? 'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400' : 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400'">{% raw %}{{ views.includes(activeTable) ? 'View' : 'Table' }}{% endraw %}</span>
+                    </div>
+                    
+                    <div class="flex items-center gap-2.5 shrink-0">
+                        <!-- Actions Custom Dropdown (Add Row, Export CSV, Batch Select) -->
+                        <div class="relative" id="table-actions-menu">
+                            <div v-if="showActionsDropdown" class="fixed inset-0 z-30" @click="showActionsDropdown = false"></div>
+                            <button @click="showActionsDropdown = !showActionsDropdown"
+                                    class="h-9 px-3.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 font-medium text-sm transition-all shadow-sm flex items-center gap-1.5 shrink-0 relative z-40"
+                                    :class="{'border-brand-400 ring-1 ring-brand-400': showActionsDropdown}"
+                                    title="Table actions">
+                                <i class="ph-bold ph-lightning text-amber-500"></i>
+                                <span>Actions</span>
+                                <i class="ph-bold ph-caret-down text-xs text-slate-400 transition-transform duration-200" :class="{'rotate-180': showActionsDropdown}"></i>
+                            </button>
+
+                            <!-- Dropdown Menu Panel -->
+                            <div v-if="showActionsDropdown" 
+                                 class="absolute left-0 mt-1.5 w-52 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 z-40 p-1.5 divide-y divide-slate-100 dark:divide-slate-800 animate-in fade-in zoom-in-95 duration-150 flex flex-col">
+                                <div class="p-1 flex flex-col gap-0.5">
+                                    <button type="button" @click="showActionsDropdown = false; openAddRowModal()" 
+                                            class="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-green-50 dark:hover:bg-green-950/40 hover:text-green-700 dark:hover:text-green-300 rounded-xl transition-colors text-left">
+                                        <div class="w-6 h-6 rounded-lg bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 flex items-center justify-center shrink-0">
+                                            <i class="ph-bold ph-plus text-xs"></i>
+                                        </div>
+                                        <span>Add Row</span>
+                                    </button>
+                                    <button type="button" @click="showActionsDropdown = false; exportCSV()" 
+                                            class="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors text-left">
+                                        <div class="w-6 h-6 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 flex items-center justify-center shrink-0">
+                                            <i class="ph-bold ph-file-csv text-xs"></i>
+                                        </div>
+                                        <span>Export CSV</span>
+                                    </button>
+                                </div>
+                                <div class="p-1 flex flex-col gap-0.5">
+                                    <button type="button" @click="showActionsDropdown = false; toggleBatchMode()" 
+                                            class="w-full flex items-center justify-between px-3 py-2 text-xs font-medium rounded-xl transition-colors text-left"
+                                            :class="batchMode ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 font-semibold' : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'">
+                                        <div class="flex items-center gap-2.5 min-w-0">
+                                            <div class="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
+                                                 :class="batchMode ? 'bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-200' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'">
+                                                <i :class="batchMode ? 'ph-bold ph-x' : 'ph-bold ph-checks'" class="text-xs"></i>
+                                            </div>
+                                            <span>Batch Select</span>
+                                        </div>
+                                        <span v-if="batchMode" class="text-[10px] bg-amber-200 dark:bg-amber-800/80 text-amber-800 dark:text-amber-200 px-1.5 py-0.5 rounded-full font-bold">ON</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Active Batch Mode Badges/Controls -->
+                        <template v-if="batchMode">
+                            <button @click="toggleBatchMode" 
+                                    class="h-9 px-3 rounded-lg bg-amber-100 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 font-semibold text-xs transition-colors shadow-xs flex items-center gap-1.5 shrink-0"
+                                    title="Exit batch selection">
+                                <i class="ph-bold ph-x text-xs"></i>
+                                <span>Cancel Batch</span>
+                            </button>
+                            <button v-if="selectedRows.length > 0" 
+                                    @click="deleteSelectedRows" 
+                                    :disabled="isBatchDeleting"
+                                    class="h-9 px-3.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium shadow-sm flex items-center gap-1.5 transition-all shrink-0 disabled:opacity-50">
+                                <i v-if="isBatchDeleting" class="ph ph-spinner animate-spin"></i>
+                                <i v-else class="ph-bold ph-trash"></i>
+                                <span>Delete ({% raw %}{{ selectedRows.length }}{% endraw %})</span>
+                            </button>
+                        </template>
+
+                        <!-- ER Map Button (Moved back down) -->
+                        <button @click="viewMode = (viewMode === 'erd' ? 'data' : 'erd')"
+                                :class="viewMode === 'erd' ? 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 font-semibold' : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 font-medium'"
+                                class="h-9 px-3.5 rounded-lg border text-sm transition-colors shadow-sm flex items-center gap-1.5 shrink-0"
+                                :title="viewMode === 'erd' ? 'Switch back to Data Grid' : 'Switch to Visual ER Diagram'">
+                            <i class="ph-bold ph-tree-structure text-indigo-500"></i>
+                            <span>{% raw %}{{ viewMode === 'erd' ? 'Data Grid' : 'ER Map' }}{% endraw %}</span>
+                        </button>
+
+                        <!-- Column Visibility & Reordering Dropdown -->
+                        {% include 'components/column_dropdown.html' %}
+
+                        <div class="w-px h-5 bg-slate-300 dark:bg-slate-700 mx-0.5 shrink-0"></div>
+
+                        <button @click="loadData(currentPage)" class="h-9 w-9 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-slate-200 transition-colors shadow-sm flex items-center justify-center shrink-0" title="Reload Data">
+                            <i class="ph-bold ph-arrow-counter-clockwise text-base" :class="{'animate-spin': dataLoading}"></i>
+                        </button>
+
+                        <!-- Search Input + Search Button Beside it -->
+                        <div class="relative shrink-0">
+                            <i class="ph ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                            <input v-model="searchQuery" 
+                                   @keyup.enter="loadData(1)" 
+                                   type="text" 
+                                   placeholder="Search rows..." 
+                                   class="h-9 pl-9 pr-7 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 w-44 sm:w-56 shadow-sm placeholder:text-slate-400 dark:placeholder:text-slate-500" />
+                            <button v-if="searchQuery" 
+                                    @click="searchQuery = ''; loadData(1)" 
+                                    class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5" 
+                                    title="Clear search">
+                                <i class="ph-bold ph-x text-xs"></i>
+                            </button>
+                        </div>
+                        <button @click="loadData(1)" class="h-9 px-3.5 rounded-lg bg-slate-800 dark:bg-slate-100 dark:text-slate-900 text-white text-sm font-medium hover:bg-slate-900 dark:hover:bg-white transition-colors shadow-sm flex items-center shrink-0">
+                            Search
+                        </button>
+                    </div>
+                </div>
+
+            <!-- Active Filter Indicator -->
+            <div v-if="activeFilter" class="flex items-center gap-2 px-6 py-2 bg-brand-50 dark:bg-brand-900/20 border-b border-slate-200 dark:border-slate-800 text-xs text-brand-700 dark:text-brand-400">
+                <i class="ph ph-funnel"></i>
+                <span>Filtered by <strong>{% raw %}{{ activeFilter.column }}{% endraw %}</strong> = <strong>{% raw %}{{ activeFilter.value }}{% endraw %}</strong></span>
+                <button @click="clearFilter" class="ml-auto text-brand-600 dark:text-brand-400 hover:text-brand-800 font-bold flex items-center gap-1">
+                    <i class="ph ph-x-circle"></i>
+                    Clear Filter
+                </button>
+            </div>
+
+            <!-- Table Container -->
+            <div class="flex-1 overflow-auto bg-white dark:bg-slate-900 relative">
+                <div v-if="dataLoading" class="absolute inset-0 bg-white/85 dark:bg-slate-900/85 backdrop-blur-md z-50 flex items-center justify-center min-h-[200px]">
+                    <div class="sticky top-1/3 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 px-8 py-6 flex flex-col items-center z-50">
+                        <i class="ph ph-spinner animate-spin text-4xl text-brand-500 mb-3"></i>
+                        <span class="text-sm font-semibold text-slate-700 dark:text-slate-200">Loading data...</span>
+                    </div>
+                </div>
+                
+                <table v-if="schema[activeTable]" class="data-table text-sm text-left">
+                    <thead class="bg-slate-100 dark:bg-slate-800 sticky top-0 z-20 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+                        <tr>
+                            <th v-if="batchMode" class="batch-col py-3 border-b-2 border-r border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-center">
+                                <input type="checkbox" :checked="isAllSelected" @change="toggleSelectAll" class="rounded border-slate-300 text-brand-600 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-800 cursor-pointer" title="Select All" />
+                            </th>
+                            <th class="actions-col py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 border-b-2 border-r border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-center select-none" title="Row actions">
+                                Action
+                            </th>
+                            <th v-for="col in visibleColumns" :key="col.Field" class="px-4 py-3 font-semibold text-slate-700 dark:text-slate-300 border-b-2 border-r border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 whitespace-nowrap relative group/th last:border-r-0" :style="{ width: (colWidths[col.Field] || 200) + 'px' }">
+                                <!-- Col Resizer -->
+                                <div @mousedown="startColResize($event, col.Field)" class="absolute top-0 right-0 w-2 h-full cursor-col-resize z-20 group/resizer hover:bg-brand-500/10 active:bg-brand-500/30 transition-all">
+                                    <div class="absolute right-0 top-0 w-px h-full bg-slate-300 dark:bg-slate-600 group-hover/resizer:bg-brand-500 group-hover/resizer:w-0.5 transition-all"></div>
+                                </div>
+                                <div @click="toggleSort(col.Field)" class="flex items-center gap-1 cursor-pointer select-none group/sort">
+                                    {% raw %}{{ col.Field }}{% endraw %}
+                                    <i v-if="schema[activeTable].primary_keys.includes(col.Field)" class="ph-fill ph-key text-yellow-500 text-xs" title="Primary Key"></i>
+                                    <div class="flex ml-auto pl-2">
+                                        <!-- Default Hover State -->
+                                        <div v-if="sortColumn !== col.Field" class="flex flex-col opacity-0 group-hover/sort:opacity-30 transition-opacity text-slate-400">
+                                            <i class="ph-fill ph-caret-up text-[10px] -mb-1"></i>
+                                            <i class="ph-fill ph-caret-down text-[10px]"></i>
+                                        </div>
+                                        <!-- Active Sorted State -->
+                                        <div v-else class="flex items-center text-brand-600 font-bold bg-brand-50 px-1.5 py-0.5 rounded shadow-sm border border-brand-100">
+                                            <i v-if="sortDirection === 'asc'" class="ph-bold ph-arrow-up text-xs"></i>
+                                            <i v-else class="ph-bold ph-arrow-down text-xs"></i>
+                                            <span class="text-[9px] uppercase tracking-widest ml-1 opacity-80" v-text="sortDirection"></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200 dark:divide-slate-800">
+                        <tr v-if="rows.length === 0 && !dataLoading">
+                            <td :colspan="visibleColumns.length + (batchMode ? 2 : 1)" class="px-4 py-12 text-center text-slate-500">
+                                <i class="ph-duotone ph-magnifying-glass text-3xl mb-2 text-slate-300 dark:text-slate-700"></i>
+                                <p>No data found.</p>
+                            </td>
+                        </tr>
+                        <tr v-for="(row, index) in rows" :key="index" 
+                            :class="[
+                                isRowSelected(index) ? 'bg-amber-50/70 dark:bg-amber-950/25' : 'hover:bg-slate-50 dark:hover:bg-slate-800/40',
+                                'transition-colors group'
+                            ]">
+                            <!-- Batch Checkbox Column -->
+                            <td v-if="batchMode" class="batch-col py-2 border-r border-slate-200 dark:border-slate-800 text-center" @click.stop>
+                                <input type="checkbox" :checked="isRowSelected(index)" @change="toggleRowSelection(index)" class="rounded border-slate-300 text-brand-600 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-800 cursor-pointer" />
+                            </td>
+                            <!-- Actions Column -->
+                            <td class="actions-col py-2 border-r border-slate-200 dark:border-slate-800 text-center">
+                                <button @click="deleteRow(index)" class="w-7 h-7 inline-flex items-center justify-center rounded-lg text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors" title="Delete Row">
+                                    <i class="ph-bold ph-trash text-sm"></i>
+                                </button>
+                            </td>
+                            <!-- Data Columns -->
+                            <td v-for="col in visibleColumns" :key="col.Field" 
+                                @click="handleCellClick($event, row[col.Field], index, col.Field)"
+                                class="px-4 py-2 border-r border-slate-200 dark:border-slate-800 last:border-r-0 relative group/cell cursor-pointer">
+                                
+                                <div @dblclick="startCellEdit(index, col.Field, row[col.Field])" class="cell-content -mx-2 px-2 py-1 rounded transition-colors dark:text-slate-300" :class="{'cursor-not-allowed': schema[activeTable].primary_keys.includes(col.Field) || !schema[activeTable].primary_keys.length}" :title="row[col.Field]">
+                                    <span v-if="row[col.Field] === null" class="text-slate-300 dark:text-slate-600 italic font-mono text-xs">NULL</span>
+                                    <span v-else-if="schema[activeTable].foreign_keys[col.Field]" class="block max-w-full overflow-hidden">
+                                        <a @click.stop="isCHeld ? handleCellClick($event, row[col.Field], index, col.Field) : teleport(schema[activeTable].foreign_keys[col.Field].table, schema[activeTable].foreign_keys[col.Field].column, row[col.Field])" 
+                                           :class="isCHeld ? 'text-slate-700 dark:text-slate-300' : 'text-brand-600 dark:text-brand-400 hover:underline'"
+                                           class="cursor-pointer inline-flex items-center gap-1.5 max-w-full transition-colors">
+                                            <span class="truncate">{% raw %}{{ row[col.Field] }}{% endraw %}</span>
+                                            <i v-if="!isCHeld" class="ph ph-arrow-square-out text-[11px] shrink-0 opacity-70"></i>
+                                        </a>
+                                    </span>
+                                    <span v-else>{% raw %}{{ row[col.Field] }}{% endraw %}</span>
+                                </div>
+
+                                <!-- Quick Inspect Button on Hover -->
+                                <button v-if="isInspectable(row[col.Field])" 
+                                        @click.stop="openInspector(row[col.Field], col.Field, index)"
+                                        class="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover/cell:opacity-100 w-6 h-6 rounded-md bg-white/95 dark:bg-slate-800/95 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 border border-slate-200 dark:border-slate-700 shadow-xs flex items-center justify-center transition-all z-10" 
+                                        title="Inspect formatted text / JSON">
+                                    <i class="ph-bold ph-code text-xs"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Footer Pagination -->
+            <div class="px-6 py-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex items-center justify-between shrink-0 shadow-[0_-1px_2px_rgba(0,0,0,0.02)]">
+                <div class="text-sm text-slate-500 dark:text-slate-400">
+                    Showing <span class="font-medium text-slate-700 dark:text-slate-200">{% raw %}{{ rows.length > 0 ? (currentPage - 1) * limit + 1 : 0 }}{% endraw %}</span> to <span class="font-medium text-slate-700 dark:text-slate-200">{% raw %}{{ Math.min(currentPage * limit, totalRows) }}{% endraw %}</span> of <span class="font-medium text-slate-700 dark:text-slate-200">{% raw %}{{ totalRows }}{% endraw %}</span> results
+                </div>
+                
+                <div class="flex items-center gap-3">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs text-slate-500 dark:text-slate-400 uppercase font-semibold tracking-wider">Per Page</span>
+                        <select v-model="limit" @change="loadData(1)" class="border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-sm focus:outline-none focus:border-brand-500 bg-white dark:bg-slate-800 dark:text-slate-200 shadow-sm">
+                            <option :value="50">50</option>
+                            <option :value="100">100</option>
+                            <option :value="500">500</option>
+                        </select>
+                    </div>
+                    
+                    <div class="w-px h-6 bg-slate-200 dark:bg-slate-700 mx-1"></div>
+                    
+                    <div class="flex items-center gap-1">
+                        <button @click="loadData(currentPage - 1)" :disabled="currentPage <= 1 || dataLoading" class="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-brand-600 dark:hover:text-brand-400 text-slate-600 dark:text-slate-400 disabled:opacity-50 disabled:hover:bg-white dark:disabled:hover:bg-slate-800 disabled:hover:text-slate-600 disabled:cursor-not-allowed transition-colors shadow-sm">
+                            <i class="ph-bold ph-caret-left"></i>
+                        </button>
+                        <span class="text-sm font-medium px-3 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-sm dark:text-slate-200">
+                            {% raw %}{{ currentPage }}{% endraw %} / {% raw %}{{ totalPages || 1 }}{% endraw %}
+                        </span>
+                        <button @click="loadData(currentPage + 1)" :disabled="currentPage >= totalPages || dataLoading" class="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-brand-600 dark:hover:text-brand-400 text-slate-600 dark:text-slate-400 disabled:opacity-50 disabled:hover:bg-white dark:disabled:hover:bg-slate-800 disabled:hover:text-slate-600 disabled:cursor-not-allowed transition-colors shadow-sm">
+                            <i class="ph-bold ph-caret-right"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+        </template>
+    </div>
+
+    <!-- JSON / Text Inspector Modal -->
+    {% include 'components/inspector_modal.html' %}
+
+    <!-- Edit Cell Modal -->
+    <div v-if="cellEditModal.open" @keydown.esc.stop="cancelCellEdit" class="fixed inset-0 z-[60] flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-slate-900/40 dark:bg-slate-950/60 backdrop-blur-sm" @click="cancelCellEdit"></div>
+        <div class="relative bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-150">
+            <!-- Header -->
+            <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/60 flex items-center justify-center text-brand-600 dark:text-brand-400 border border-brand-200 dark:border-brand-800/60">
+                        <i class="ph-bold ph-pencil-simple text-lg"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                            Edit Cell
+                            <span class="text-xs font-mono font-medium px-2 py-0.5 rounded-md bg-brand-100 dark:bg-brand-900/40 text-brand-700 dark:text-brand-300">{% raw %}{{ cellEditModal.colField }}{% endraw %}</span>
+                        </h3>
+                        <p class="text-[11px] text-slate-400 dark:text-slate-500">
+                            Table: <span class="font-medium text-slate-600 dark:text-slate-300">{% raw %}{{ activeTable }}{% endraw %}</span>
+                            <span v-if="cellEditModal.colType" class="ml-2 font-mono">({% raw %}{{ cellEditModal.colType }}{% endraw %})</span>
+                        </p>
+                    </div>
+                </div>
+                <button @click="cancelCellEdit" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800">
+                    <i class="ph-bold ph-x text-lg"></i>
+                </button>
+            </div>
+            
+            <!-- Body -->
+            <div class="p-6 space-y-4">
+                <div class="flex items-center justify-between">
+                    <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                        Cell Value
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer select-none text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200">
+                        <input type="checkbox" v-model="cellEditModal.isNull" class="rounded border-slate-300 text-brand-600 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-800" />
+                        <span>Set to NULL</span>
+                    </label>
+                </div>
+
+                <div v-if="cellEditModal.isNull" class="py-8 px-4 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 text-center flex flex-col items-center justify-center gap-1">
+                    <span class="text-xs font-mono font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2.5 py-1 rounded border border-amber-200 dark:border-amber-800/60">NULL</span>
+                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">This field will be saved as a database NULL value.</p>
+                </div>
+                <div v-else>
+                    <textarea 
+                        ref="cellEditTextarea"
+                        v-model="cellEditModal.value" 
+                        @keydown.ctrl.enter.prevent="saveCellEdit" 
+                        @keydown.meta.enter.prevent="saveCellEdit"
+                        @keydown.esc="cancelCellEdit"
+                        rows="5" 
+                        placeholder="Enter cell value..." 
+                        class="w-full px-3.5 py-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-slate-100 rounded-xl text-sm font-mono focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 shadow-sm placeholder:text-slate-400 dark:placeholder:text-slate-600 resize-y"></textarea>
+                    <div class="flex justify-between items-center mt-1.5 text-[11px] text-slate-400 dark:text-slate-500">
+                        <span>Press <kbd class="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[10px] font-mono">⌘+Enter</kbd> or <kbd class="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[10px] font-mono">Ctrl+Enter</kbd> to save</span>
+                        <span>{% raw %}{{ (cellEditModal.value || '').length }}{% endraw %} chars</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="px-6 py-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex justify-end gap-3">
+                <button @click="cancelCellEdit" type="button" class="px-4 py-2 rounded-xl text-slate-600 dark:text-slate-400 font-medium hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors text-sm">
+                    Cancel
+                </button>
+                <button @click="saveCellEdit" :disabled="cellEditModal.isSaving" type="button" class="px-6 py-2 rounded-xl bg-brand-600 text-white font-bold hover:bg-brand-700 shadow-sm flex items-center gap-2 disabled:opacity-50 text-sm">
+                    <i v-if="cellEditModal.isSaving" class="ph ph-spinner animate-spin"></i>
+                    <i v-else class="ph-bold ph-check"></i>
+                    Save Changes
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Row Modal -->
+    <div v-if="showAddRowModal" class="fixed inset-0 z-[60] flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-slate-900/40 dark:bg-slate-950/60 backdrop-blur-sm" @click="showAddRowModal = false"></div>
+        <div class="relative bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800">
+            <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50">
+                <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                    <i class="ph-bold ph-plus-circle text-green-600 dark:text-green-400 text-xl"></i>
+                    Add New Row to {% raw %}{{ activeTable }}{% endraw %}
+                </h3>
+                <button @click="showAddRowModal = false" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors p-1">
+                    <i class="ph-bold ph-x text-lg"></i>
+                </button>
+            </div>
+            
+            <div class="flex-1 overflow-y-auto p-6 space-y-4">
+                <div v-for="col in schema[activeTable].columns" :key="col.Field" class="flex flex-col gap-1.5">
+                    <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center justify-between">
+                        {% raw %}{{ col.Field }}{% endraw %}
+                        <span class="text-[10px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-slate-400 dark:text-slate-500 normal-case font-mono">{% raw %}{{ col.Type }}{% endraw %}</span>
+                    </label>
+                    <input v-model="addRowData[col.Field]" type="text" :placeholder="'Enter ' + col.Field + '...'" class="w-full px-4 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 dark:text-slate-100 rounded-xl text-sm focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 shadow-sm placeholder:text-slate-400 dark:placeholder:text-slate-600" />
+                    <p v-if="col.Extra === 'auto_increment'" class="text-[10px] text-brand-500 font-medium">Auto-incrementing field (leave empty to auto-generate)</p>
+                </div>
+            </div>
+
+            <div class="px-6 py-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex justify-end gap-3">
+                <button @click="showAddRowModal = false" class="px-4 py-2 rounded-xl text-slate-600 dark:text-slate-400 font-medium hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors text-sm">
+                    Cancel
+                </button>
+                <button @click="saveNewRow" :disabled="isSavingRow" class="px-6 py-2 rounded-xl bg-brand-600 text-white font-bold hover:bg-brand-700 shadow-sm flex items-center gap-2 disabled:opacity-50 text-sm">
+                    <i v-if="isSavingRow" class="ph ph-spinner animate-spin"></i>
+                    Save Row
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Fixed Copy Feedback -->
+    <transition name="fade">
+        <div v-if="copiedCell.row !== -1" class="fixed bottom-20 right-8 z-[100] flex items-center gap-3 px-4 py-2 bg-brand-600 dark:bg-brand-500 text-white rounded-xl shadow-2xl border border-white/20 backdrop-blur-md">
+            <i class="ph-bold ph-check-circle text-lg"></i>
+            <span class="text-sm font-bold tracking-tight">Copied to Clipboard!</span>
+        </div>
+    </transition>
+</div>

@@ -1,0 +1,1064 @@
+{% extends "base.html" %}
+
+{% block head %}
+<style>
+    .cell-content {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        width: 100%;
+        display: block;
+        position: relative;
+    }
+    @keyframes copy-popup {
+        0% { transform: translateY(0) opacity(0); }
+        20% { transform: translateY(-10px) opacity(1); }
+        80% { transform: translateY(-10px) opacity(1); }
+        100% { transform: translateY(-20px) opacity(0); }
+    }
+    .copy-toast {
+        animation: copy-popup 1.5s ease-out forwards;
+    }
+    .data-table th, .data-table td {
+        max-width: 800px;
+    }
+    .sidebar-scroll::-webkit-scrollbar {
+        width: 4px;
+    }
+    .data-table {
+        table-layout: fixed;
+        width: max-content;
+        border-collapse: separate;
+        border-spacing: 0;
+    }
+    .data-table thead {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+    }
+    .data-table thead th {
+        background-color: #f1f5f9;
+        position: sticky;
+        top: 0;
+        z-index: 20;
+    }
+    .dark .data-table thead th {
+        background-color: #1e293b;
+    }
+    .batch-col {
+        width: 40px !important;
+        min-width: 40px !important;
+        max-width: 40px !important;
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+        text-align: center !important;
+    }
+    .actions-col {
+        width: 56px !important;
+        min-width: 56px !important;
+        max-width: 56px !important;
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+        text-align: center !important;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+    <!-- Workspace View Container (SPA View Switcher) -->
+    <div class="flex-1 min-w-0 min-h-0 relative overflow-hidden flex flex-col">
+        <!-- Dashboard View (Databases List) -->
+        <div v-show="activeView === 'dashboard'" class="h-full w-full flex flex-col min-w-0 min-h-0">
+            {% include 'components/dashboard_view.html' %}
+        </div>
+
+        <!-- Database Workspace View (Tables, ER Map, Data Grid) -->
+        <div v-show="activeView === 'db'" class="h-full w-full flex flex-col min-w-0 min-h-0">
+            {% include 'components/database_viewer.html' %}
+        </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    window.INITIAL_DATABASES = {{ (profile.databases if profile else []) | tojson | safe }};
+    window.SERVER_DBNAME = "{{ dbname or '' }}";
+    const DBNAME = "{{ dbname or '' }}";
+    window.SERVER_INITIAL_TABLE = "{{ initial_table or '' }}";
+
+    createApp({
+        directives: {
+            focus: { mounted(el) { el.focus() } }
+        },
+        setup() {
+            const baseSetup = window.baseAppSetup();
+
+            // Normalized database list for sidebar & SQL console
+            baseSetup.dbList.value = (window.INITIAL_DATABASES || []).map(db => typeof db === 'string' ? { name: db, accessible: null } : db);
+            const databases = ref(baseSetup.dbList.value);
+
+            // -------------------------------------------------------------
+            // SPA Tabs State Management
+            // -------------------------------------------------------------
+            const initialTabs = [
+                { id: 'dashboard', title: 'Databases', type: 'dashboard' }
+            ];
+
+            if (window.SERVER_DBNAME) {
+                initialTabs.push({
+                    id: 'db:' + window.SERVER_DBNAME,
+                    title: window.SERVER_DBNAME,
+                    dbname: window.SERVER_DBNAME,
+                    type: 'db',
+                    activeTable: window.SERVER_INITIAL_TABLE || null
+                });
+            }
+
+            const openTabs = ref(initialTabs);
+            const activeTabId = ref(window.SERVER_DBNAME ? ('db:' + window.SERVER_DBNAME) : 'dashboard');
+
+            const activeTab = computed(() => {
+                return openTabs.value.find(t => t.id === activeTabId.value) || openTabs.value[0];
+            });
+
+            const activeView = computed(() => {
+                return activeTab.value?.type || 'dashboard';
+            });
+
+            const activeDb = computed(() => {
+                return activeTab.value?.dbname || '';
+            });
+
+            // -------------------------------------------------------------
+            // Dashboard Module Logic
+            // -------------------------------------------------------------
+            const newDbName = ref('');
+            const isAdding = ref(false);
+            const isImporting = ref(false);
+            const fileInput = ref(null);
+            const importDbName = ref('');
+            const showBrowseModal = ref(false);
+            const remoteDatabases = ref([]);
+            const isLoadingRemote = ref(false);
+            const newRemoteDbName = ref('');
+            const isCreatingRemote = ref(false);
+
+            const fetchStatuses = async () => {
+                if (!databases.value.length) return;
+                try {
+                    const res = await fetch(`${window.API_BASE}/dbs/status`);
+                    const data = await res.json();
+                    if (data.success && data.statuses) {
+                        databases.value.forEach(db => {
+                            if (data.statuses[db.name] !== undefined) {
+                                db.accessible = Boolean(data.statuses[db.name]);
+                            } else {
+                                db.accessible = false;
+                            }
+                        });
+                        return;
+                    }
+                } catch (e) {
+                    console.warn("Status check failed:", e);
+                }
+                databases.value.forEach(db => {
+                    if (db.accessible === null) db.accessible = false;
+                });
+            };
+
+            const addDb = async () => {
+                const name = newDbName.value.trim();
+                if(!name) return;
+
+                isAdding.value = true;
+                try {
+                    const res = await fetch(window.API_BASE + '/dbs', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ name })
+                    });
+                    const data = await res.json();
+                    if(data.error) {
+                        baseSetup.showToast(data.error, 'error');
+                    } else {
+                        databases.value.push({ name: data.name, accessible: data.accessible });
+                        baseSetup.dbList.value = databases.value;
+                        newDbName.value = '';
+                        baseSetup.showToast('Database added successfully');
+                    }
+                } catch(e) {
+                    baseSetup.showToast('Network error', 'error');
+                } finally {
+                    isAdding.value = false;
+                }
+            };
+
+            const removeDb = async (name) => {
+                const confirmed = await baseSetup.customConfirm(
+                    'Remove Database',
+                    `Are you sure you want to remove the database "${name}" from your tracked list? This will not affect the data on the server.`,
+                    false
+                );
+                if(!confirmed) return;
+
+                try {
+                    const res = await fetch(`${window.API_BASE}/dbs/${encodeURIComponent(name)}`, { method: 'DELETE' });
+                    if(res.ok) {
+                        databases.value = databases.value.filter(d => d.name !== name);
+                        baseSetup.dbList.value = databases.value;
+                        closeTab('db:' + name);
+                        baseSetup.showToast('Database removed');
+                    }
+                } catch(e) {
+                    baseSetup.showToast('Error removing database', 'error');
+                }
+            };
+
+            const triggerFileInput = () => {
+                if(!importDbName.value.trim()) {
+                    baseSetup.showToast('Please enter a new database name for import', 'error');
+                    return;
+                }
+                if (fileInput.value) fileInput.value.click();
+            };
+
+            const handleImport = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const name = importDbName.value.trim();
+                if (!name) return;
+
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('name', name);
+
+                isImporting.value = true;
+                try {
+                    const res = await fetch(window.API_BASE + '/dbs/import', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const data = await res.json();
+                    if(data.error) {
+                        baseSetup.showToast(data.error, 'error');
+                    } else {
+                        if(!databases.value.find(d => d.name === data.name)) {
+                            databases.value.push({ name: data.name, accessible: data.accessible });
+                            baseSetup.dbList.value = databases.value;
+                        }
+                        importDbName.value = '';
+                        baseSetup.showToast('Database imported successfully');
+                    }
+                } catch(err) {
+                    baseSetup.showToast('Network error during import', 'error');
+                } finally {
+                    isImporting.value = false;
+                    e.target.value = '';
+                }
+            };
+
+            const exportDb = (name) => {
+                window.location.href = `${window.API_BASE}/db/${encodeURIComponent(name)}/export`;
+            };
+
+            const openBrowseModal = async () => {
+                showBrowseModal.value = true;
+                isLoadingRemote.value = true;
+                try {
+                    const res = await fetch(window.API_BASE + '/remote_dbs');
+                    const data = await res.json();
+                    if (data.success) {
+                        remoteDatabases.value = data.databases;
+                    } else {
+                        baseSetup.showToast(data.error || 'Failed to fetch databases', 'error');
+                    }
+                } catch(e) {
+                    baseSetup.showToast('Network error fetching remote databases', 'error');
+                } finally {
+                    isLoadingRemote.value = false;
+                }
+            };
+
+            const deleteRemoteDb = async (name) => {
+                const confirmed = await baseSetup.customConfirm(
+                    'DROP Database',
+                    `DANGER: Are you sure you want to completely DROP the database "${name}" from the server? This action CANNOT be undone and all data will be lost forever.`,
+                    true
+                );
+                if(!confirmed) return;
+
+                try {
+                    const res = await fetch(`${window.API_BASE}/remote_dbs/${encodeURIComponent(name)}`, {
+                        method: 'DELETE'
+                    });
+                    const data = await res.json();
+                    if(data.error) {
+                        baseSetup.showToast(data.error, 'error');
+                    } else {
+                        baseSetup.showToast(`Database ${name} deleted successfully`);
+                        remoteDatabases.value = remoteDatabases.value.filter(d => d !== name);
+                        databases.value = databases.value.filter(d => d.name !== name);
+                        baseSetup.dbList.value = databases.value;
+                        closeTab('db:' + name);
+                    }
+                } catch(e) {
+                    baseSetup.showToast('Error deleting database', 'error');
+                }
+            };
+
+            const createRemoteDb = async () => {
+                const name = newRemoteDbName.value.trim();
+                if(!name) return;
+
+                isCreatingRemote.value = true;
+                try {
+                    const res = await fetch(window.API_BASE + '/remote_dbs', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ name })
+                    });
+                    const data = await res.json();
+                    if(data.error) {
+                        baseSetup.showToast(data.error, 'error');
+                    } else {
+                        baseSetup.showToast(`Database ${name} created successfully`);
+                        remoteDatabases.value.unshift(name);
+                        newRemoteDbName.value = '';
+                    }
+                } catch(e) {
+                    baseSetup.showToast('Error creating database', 'error');
+                } finally {
+                    isCreatingRemote.value = false;
+                }
+            };
+
+            const addRemoteDb = async (name) => {
+                if (databases.value.find(d => d.name === name)) {
+                    baseSetup.showToast(`${name} is already connected`);
+                    return;
+                }
+
+                try {
+                    const res = await fetch(window.API_BASE + '/dbs', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ name })
+                    });
+                    const data = await res.json();
+                    if(data.error) {
+                        baseSetup.showToast(data.error, 'error');
+                    } else {
+                        databases.value.push({ name: data.name, accessible: data.accessible });
+                        baseSetup.dbList.value = databases.value;
+                        baseSetup.showToast(`Connected to ${name}`);
+                    }
+                } catch(e) {
+                    baseSetup.showToast(`Error connecting to ${name}`, 'error');
+                }
+            };
+
+            // -------------------------------------------------------------
+            // Database Viewer Module Logic
+            // -------------------------------------------------------------
+            const getSavedSidebarWidth = () => {
+                try {
+                    const saved = localStorage.getItem('db_viewer_sidebar_width');
+                    if (saved !== null) {
+                        const parsed = parseInt(saved, 10);
+                        if (!isNaN(parsed) && parsed >= 150) return parsed;
+                    }
+                } catch (e) {}
+                return 320;
+            };
+
+            const sidebarWidth = ref(getSavedSidebarWidth());
+            const isResizing = ref(false);
+
+            const startResize = (e) => {
+                isResizing.value = true;
+                window.addEventListener('mousemove', handleResize);
+                window.addEventListener('mouseup', stopResize);
+                document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none';
+            };
+
+            const handleResize = (e) => {
+                if (!isResizing.value) return;
+                const newWidth = Math.max(160, Math.min(window.innerWidth - 100, Math.round(e.clientX)));
+                sidebarWidth.value = newWidth;
+            };
+
+            const stopResize = () => {
+                if (isResizing.value) {
+                    try { localStorage.setItem('db_viewer_sidebar_width', String(sidebarWidth.value)); } catch (err) {}
+                }
+                isResizing.value = false;
+                window.removeEventListener('mousemove', handleResize);
+                window.removeEventListener('mouseup', stopResize);
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+            };
+
+            // Database tables & schema
+            const schemaLoading = ref(false);
+            const schemaError = ref('');
+            const tables = ref([]);
+            const views = ref([]);
+            const showViews = ref(false);
+            const schema = ref({});
+            const expandedSchema = ref(null);
+
+            // Active Table & Grid
+            const activeTable = baseSetup.currentTable;
+            const rows = ref([]);
+            const dataLoading = ref(false);
+            const currentPage = ref(1);
+            const limit = ref(100);
+            const totalRows = ref(0);
+            const totalPages = ref(0);
+            const searchQuery = ref('');
+            const activeFilter = ref(null);
+            const showActionsDropdown = ref(false);
+
+            // Sorting
+            const sortColumn = ref('');
+            const sortDirection = ref('asc');
+
+            const toggleSort = (field) => {
+                if (sortColumn.value === field) {
+                    if (sortDirection.value === 'asc') {
+                        sortDirection.value = 'desc';
+                    } else {
+                        sortColumn.value = '';
+                        sortDirection.value = 'asc';
+                    }
+                } else {
+                    sortColumn.value = field;
+                    sortDirection.value = 'asc';
+                }
+                loadData(1);
+            };
+
+            // Column Resizing
+            const colWidths = ref({});
+            const resizingCol = ref({ field: null, startX: 0, startWidth: 0 });
+
+            const startColResize = (e, field) => {
+                const currentWidth = colWidths.value[field] || 200;
+                resizingCol.value = { field, startX: e.clientX, startWidth: currentWidth };
+                document.addEventListener('mousemove', handleColResize);
+                document.addEventListener('mouseup', stopColResize);
+                document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none';
+            };
+
+            const handleColResize = (e) => {
+                if (!resizingCol.value.field) return;
+                const diff = e.clientX - resizingCol.value.startX;
+                const newWidth = Math.max(50, Math.min(800, resizingCol.value.startWidth + diff));
+                colWidths.value[resizingCol.value.field] = newWidth;
+            };
+
+            const stopColResize = () => {
+                resizingCol.value = { field: null, startX: 0, startWidth: 0 };
+                document.removeEventListener('mousemove', handleColResize);
+                document.removeEventListener('mouseup', stopColResize);
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+            };
+
+            // Cell Edit Modal
+            const cellEditModal = ref({
+                open: false,
+                rowIndex: -1,
+                colField: '',
+                colType: '',
+                value: '',
+                isNull: false,
+                isSaving: false,
+                originalValue: null
+            });
+            const cellEditTextarea = ref(null);
+
+            const cancelCellEdit = () => {
+                cellEditModal.value.open = false;
+                cellEditModal.value.rowIndex = -1;
+                cellEditModal.value.colField = '';
+                cellEditModal.value.value = '';
+                cellEditModal.value.isNull = false;
+                cellEditModal.value.isSaving = false;
+            };
+
+            // Add Row Modal
+            const showAddRowModal = ref(false);
+            const addRowData = ref({});
+            const isSavingRow = ref(false);
+
+            const openAddRowModal = () => {
+                if(!activeTable.value) return;
+                const newRow = {};
+                (schema.value[activeTable.value]?.columns || []).forEach(col => {
+                    newRow[col.Field] = '';
+                });
+                addRowData.value = newRow;
+                showAddRowModal.value = true;
+            };
+
+            const saveNewRow = async () => {
+                if (!activeDb.value || !activeTable.value) return;
+                isSavingRow.value = true;
+                try {
+                    const cleanData = {};
+                    (schema.value[activeTable.value]?.columns || []).forEach(col => {
+                        const val = addRowData.value[col.Field];
+                        if (col.Extra === 'auto_increment' && !val) return;
+                        cleanData[col.Field] = val === '' ? null : val;
+                    });
+
+                    const res = await fetch(`${window.API_BASE}/db/${encodeURIComponent(activeDb.value)}/table/${encodeURIComponent(activeTable.value)}/row`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(cleanData)
+                    });
+                    const data = await res.json();
+                    if(data.error) {
+                        baseSetup.showToast(data.error, 'error');
+                    } else {
+                        baseSetup.showToast('Row added successfully');
+                        showAddRowModal.value = false;
+                        loadData(1);
+                    }
+                } catch(e) {
+                    baseSetup.showToast('Error saving row', 'error');
+                } finally {
+                    isSavingRow.value = false;
+                }
+            };
+
+            const deleteRow = async (index) => {
+                const tableName = activeTable.value;
+                const db = activeDb.value;
+                if (!tableName || !db) return;
+                const pks = schema.value[tableName]?.primary_keys || [];
+                
+                if (!pks.length) {
+                    baseSetup.showToast('Cannot delete row: Table has no Primary Key defined.', 'error');
+                    return;
+                }
+
+                const confirmed = await baseSetup.customConfirm(
+                    'Delete Record',
+                    'Are you sure you want to permanently delete this row from the database? This action cannot be undone.',
+                    true
+                );
+                if (!confirmed) return;
+
+                const rowData = rows.value[index];
+                const pkValues = {};
+                pks.forEach(pk => { pkValues[pk] = rowData[pk]; });
+
+                try {
+                    const res = await fetch(`${window.API_BASE}/db/${encodeURIComponent(db)}/table/${encodeURIComponent(tableName)}/row`, {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ primary_keys: pkValues })
+                    });
+                    const data = await res.json();
+                    if (data.error) {
+                        baseSetup.showToast(data.error, 'error');
+                    } else {
+                        baseSetup.showToast('Row deleted');
+                        rows.value.splice(index, 1);
+                        totalRows.value--;
+                    }
+                } catch(e) {
+                    baseSetup.showToast('Error deleting row', 'error');
+                }
+            };
+
+            // Batch Selection Module
+            const batchSelection = window.createBatchSelectionModule(
+                Vue,
+                rows,
+                () => (schema.value[activeTable.value]?.primary_keys || []),
+                () => { loadData(currentPage.value); },
+                async (pkList) => {
+                    const res = await fetch(`${window.API_BASE}/db/${encodeURIComponent(activeDb.value)}/table/${encodeURIComponent(activeTable.value)}/row`, {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ rows: pkList })
+                    });
+                    return await res.json();
+                }
+            );
+
+            const exportCSV = () => {
+                if (!activeDb.value || !activeTable.value) return;
+                window.location.href = `${window.API_BASE}/db/${encodeURIComponent(activeDb.value)}/table/${encodeURIComponent(activeTable.value)}/export/csv`;
+            };
+
+            const teleport = (targetTable, targetCol, value) => {
+                activeFilter.value = { column: targetCol, value: value };
+                selectTable(targetTable, true);
+            };
+
+            const clearFilter = () => {
+                activeFilter.value = null;
+                loadData(1);
+            };
+
+            // Cell double click / edit
+            const startCellEdit = (rowIndex, colField, currentValue) => {
+                const tableName = activeTable.value;
+                const pks = schema.value[tableName]?.primary_keys || [];
+                if(!pks.length || pks.includes(colField)) return;
+
+                const colDef = schema.value[tableName]?.columns?.find(c => c.Field === colField);
+                const isNull = currentValue === null;
+                const valStr = isNull ? '' : (typeof currentValue === 'object' ? JSON.stringify(currentValue) : String(currentValue));
+
+                cellEditModal.value = {
+                    open: true,
+                    rowIndex,
+                    colField,
+                    colType: colDef ? colDef.Type : '',
+                    value: valStr,
+                    isNull,
+                    isSaving: false,
+                    originalValue: currentValue
+                };
+
+                Vue.nextTick(() => {
+                    if (cellEditTextarea.value) {
+                        cellEditTextarea.value.focus();
+                        cellEditTextarea.value.select();
+                    }
+                });
+            };
+
+            const saveCellEdit = async () => {
+                const { rowIndex, colField, isNull, value, originalValue } = cellEditModal.value;
+                if (rowIndex === -1 || !colField) return;
+
+                const tableName = activeTable.value;
+                const db = activeDb.value;
+                const pks = schema.value[tableName]?.primary_keys || [];
+                const originalRow = rows.value[rowIndex];
+                
+                const newValue = isNull ? null : value;
+                if (newValue === originalValue) {
+                    cancelCellEdit();
+                    return;
+                }
+
+                const updates = { [colField]: newValue };
+                const pkValues = {};
+                pks.forEach(pk => { pkValues[pk] = originalRow[pk]; });
+
+                cellEditModal.value.isSaving = true;
+                const previousValue = originalRow[colField];
+                rows.value[rowIndex][colField] = newValue;
+
+                try {
+                    const res = await fetch(`${window.API_BASE}/db/${encodeURIComponent(db)}/table/${encodeURIComponent(tableName)}/row`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ primary_keys: pkValues, updates })
+                    });
+                    const data = await res.json();
+                    if(data.error) {
+                        rows.value[rowIndex][colField] = previousValue;
+                        baseSetup.showToast(data.error, 'error');
+                    } else {
+                        cancelCellEdit();
+                        baseSetup.showToast('Cell updated successfully');
+                    }
+                } catch(e) {
+                    rows.value[rowIndex][colField] = previousValue;
+                    baseSetup.showToast('Error updating cell', 'error');
+                } finally {
+                    cellEditModal.value.isSaving = false;
+                }
+            };
+
+            const isColumnPrimaryKey = (colField) => {
+                if (!activeTable.value || !schema.value[activeTable.value]) return false;
+                return (schema.value[activeTable.value].primary_keys || []).includes(colField);
+            };
+
+            // Inspector Modal
+            const inspector = window.createInspectorModule(
+                Vue,
+                (colField) => isColumnPrimaryKey(colField),
+                (colField, rowIndex, val) => startCellEdit(rowIndex, colField, val)
+            );
+
+            // Column Manager
+            const columnManager = window.createColumnManagerModule(
+                Vue,
+                () => (schema.value[activeTable.value]?.columns || []),
+                () => `${activeDb.value}_${activeTable.value}`,
+                (field) => isColumnPrimaryKey(field)
+            );
+
+            // ER Diagram Module
+            const erd = window.createErdModule(
+                Vue,
+                () => schema.value,
+                (tableName) => selectTable(tableName),
+                () => activeDb.value,
+                baseSetup.showToast
+            );
+
+            // Instant Cell Copy
+            const copiedCell = ref({ row: -1, col: null });
+            const isCHeld = ref(false);
+
+            const copyToClipboard = (text, rowIdx, colField) => {
+                const val = text === null ? 'NULL' : (typeof text === 'object' ? JSON.stringify(text) : String(text));
+                navigator.clipboard.writeText(val).then(() => {
+                    copiedCell.value = { row: rowIdx, col: colField };
+                    setTimeout(() => {
+                        if (copiedCell.value.row === rowIdx && copiedCell.value.col === colField) {
+                            copiedCell.value = { row: -1, col: null };
+                        }
+                    }, 1000);
+                });
+            };
+
+            const handleCellClick = (e, value, rowIdx, colField) => {
+                if (isCHeld.value) {
+                    e.preventDefault();
+                    copyToClipboard(value, rowIdx, colField);
+                }
+            };
+
+            // Cmd+J Palette
+            const showCmdJ = ref(false);
+            const cmdJSearch = ref('');
+            const cmdJIndex = ref(0);
+            const cmdJInput = ref(null);
+            const cmdJList = ref(null);
+
+            const filteredCmdJTables = computed(() => {
+                const objects = [
+                    ...tables.value.map(name => ({ name, kind: 'Table' })),
+                    ...views.value.map(name => ({ name, kind: 'View' })),
+                ];
+                if(!cmdJSearch.value) return objects;
+                return objects.filter(object => object.name.toLowerCase().includes(cmdJSearch.value.toLowerCase()));
+            });
+
+            const cmdJNav = (dir) => {
+                const max = filteredCmdJTables.value.length;
+                if(max === 0) return;
+                cmdJIndex.value = (cmdJIndex.value + dir + max) % max;
+                Vue.nextTick(() => {
+                    const el = document.getElementById('cmdj-item-' + cmdJIndex.value);
+                    if(el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                });
+            };
+
+            const cmdJSelect = (tableName) => {
+                selectTable(tableName);
+                showCmdJ.value = false;
+            };
+
+            const cmdJExecute = () => {
+                const tbl = filteredCmdJTables.value[cmdJIndex.value];
+                if(tbl) cmdJSelect(tbl.name);
+            };
+
+            // Fetch Database Schema
+            const fetchSchema = async (targetDb = activeDb.value, initialTable = null) => {
+                if (!targetDb) return;
+                schemaLoading.value = true;
+                schemaError.value = '';
+                try {
+                    const res = await fetch(`${window.API_BASE}/db/${encodeURIComponent(targetDb)}/schema`);
+                    const data = await res.json();
+                    if(data.error) {
+                        schemaError.value = data.error;
+                    } else {
+                        tables.value = data.tables || [];
+                        views.value = data.views || [];
+                        schema.value = data.schema || {};
+                        erd.loadPositions();
+
+                        const visibleObjects = [...tables.value, ...views.value];
+                        const hasSavedWidth = localStorage.getItem('db_viewer_sidebar_width') !== null;
+                        if (!hasSavedWidth && visibleObjects.length > 0) {
+                            let maxLen = 0;
+                            visibleObjects.forEach(t => { if(t.length > maxLen) maxLen = t.length; });
+                            sidebarWidth.value = Math.max(200, Math.min(500, (maxLen * 8) + 120));
+                        }
+
+                        const targetTable = initialTable || activeTable.value;
+                        if (targetTable && visibleObjects.includes(targetTable)) {
+                            if (views.value.includes(targetTable)) showViews.value = true;
+                            selectTable(targetTable, false, false);
+                        }
+                    }
+                } catch(e) {
+                    schemaError.value = "Failed to load database schema.";
+                } finally {
+                    schemaLoading.value = false;
+                }
+            };
+
+            // Select Table
+            const selectTable = (tableName, keepFilter = false, pushState = true) => {
+                if (activeTable.value === tableName && !keepFilter) {
+                    loadData(1);
+                    return;
+                }
+                if (!keepFilter) activeFilter.value = null;
+
+                activeTable.value = tableName;
+                searchQuery.value = '';
+                currentPage.value = 1;
+                colWidths.value = {};
+                batchSelection.clearSelection();
+                columnManager.loadSettings();
+
+                // Update activeTab record
+                if (activeTab.value && activeTab.value.type === 'db') {
+                    activeTab.value.activeTable = tableName;
+                }
+
+                const tableSchema = schema.value[tableName];
+                if (tableSchema && tableSchema.columns.some(c => c.Field === 'created_at')) {
+                    sortColumn.value = 'created_at';
+                    sortDirection.value = 'desc';
+                } else {
+                    sortColumn.value = '';
+                    sortDirection.value = 'asc';
+                }
+
+                cancelCellEdit();
+
+                if (pushState && activeDb.value) {
+                    const newUrl = `${window.PROFILE_ROOT}db/${encodeURIComponent(activeDb.value)}/table/${encodeURIComponent(tableName)}`;
+                    window.history.pushState({ tabId: activeTabId.value, dbname: activeDb.value, table: tableName }, '', newUrl);
+                }
+
+                loadData(1);
+            };
+
+            const toggleSchema = (tableName) => {
+                expandedSchema.value = (expandedSchema.value === tableName) ? null : tableName;
+            };
+
+            // Load Data for active table
+            const loadData = async (page) => {
+                if (page < 1 || !activeTable.value || !activeDb.value) return;
+                dataLoading.value = true;
+                cancelCellEdit();
+                batchSelection.clearSelection();
+
+                try {
+                    const url = new URL(`${window.API_BASE}/db/${encodeURIComponent(activeDb.value)}/table/${encodeURIComponent(activeTable.value)}/data`, window.location.origin);
+                    url.searchParams.append('page', page);
+                    url.searchParams.append('limit', limit.value);
+
+                    if (activeFilter.value) {
+                        url.searchParams.append('filter_col', activeFilter.value.column);
+                        url.searchParams.append('filter_val', activeFilter.value.value);
+                    } else if (searchQuery.value) {
+                        url.searchParams.append('search', searchQuery.value);
+                    }
+
+                    if (sortColumn.value) {
+                        url.searchParams.append('sort', sortColumn.value);
+                        url.searchParams.append('dir', sortDirection.value);
+                    }
+
+                    const res = await fetch(url);
+                    const data = await res.json();
+                    if(data.error) {
+                        baseSetup.showToast(data.error, 'error');
+                    } else {
+                        rows.value = data.rows || [];
+                        totalRows.value = data.total || 0;
+                        currentPage.value = data.page || 1;
+                        totalPages.value = data.pages || 0;
+                    }
+                } catch(e) {
+                    baseSetup.showToast('Error loading table data', 'error');
+                } finally {
+                    dataLoading.value = false;
+                }
+            };
+
+            // -------------------------------------------------------------
+            // SPA Tab Operations
+            // -------------------------------------------------------------
+            const openDatabaseTab = (dbName, initialTable = null, pushState = true) => {
+                if (!dbName) return;
+                const tabId = 'db:' + dbName;
+                let existingTab = openTabs.value.find(t => t.id === tabId);
+
+                if (!existingTab) {
+                    existingTab = {
+                        id: tabId,
+                        title: dbName,
+                        dbname: dbName,
+                        type: 'db',
+                        activeTable: initialTable || null
+                    };
+                    openTabs.value.push(existingTab);
+                } else if (initialTable) {
+                    existingTab.activeTable = initialTable;
+                }
+
+                activateTab(tabId, pushState);
+            };
+
+            const activateTab = (tabId, pushState = true) => {
+                activeTabId.value = tabId;
+                const current = openTabs.value.find(t => t.id === tabId);
+
+                if (current && current.type === 'db') {
+                    baseSetup.sqlDb.value = current.dbname;
+                    // Switch active table state
+                    activeTable.value = current.activeTable || null;
+                    fetchSchema(current.dbname, current.activeTable);
+
+                    if (pushState) {
+                        const url = current.activeTable
+                            ? `${window.PROFILE_ROOT}db/${encodeURIComponent(current.dbname)}/table/${encodeURIComponent(current.activeTable)}`
+                            : `${window.PROFILE_ROOT}db/${encodeURIComponent(current.dbname)}`;
+                        window.history.pushState({ tabId, dbname: current.dbname, table: current.activeTable }, '', url);
+                    }
+                } else {
+                    // Dashboard tab
+                    activeTable.value = null;
+                    if (pushState) {
+                        window.history.pushState({ tabId: 'dashboard' }, '', window.PROFILE_ROOT);
+                    }
+                }
+            };
+
+            const closeTab = (tabId) => {
+                const idx = openTabs.value.findIndex(t => t.id === tabId);
+                if (idx === -1 || tabId === 'dashboard') return;
+
+                openTabs.value.splice(idx, 1);
+
+                // If closed tab was active, switch to previous or adjacent tab
+                if (activeTabId.value === tabId) {
+                    const nextTab = openTabs.value[Math.max(0, idx - 1)];
+                    activateTab(nextTab.id, true);
+                }
+            };
+
+            const switchToDashboardTab = () => {
+                activateTab('dashboard', true);
+            };
+
+            // Override baseSetup.goTo for SPA within current profile
+            const spaGoTo = (url) => {
+                if (url === '/' || url === window.PROFILE_ROOT) {
+                    switchToDashboardTab();
+                    return;
+                }
+                const dbMatch = url.match(/\/db\/([^/?#]+)/);
+                if (dbMatch) {
+                    const dbName = decodeURIComponent(dbMatch[1]);
+                    openDatabaseTab(dbName, null, true);
+                    return;
+                }
+                window.location.href = url;
+            };
+            baseSetup.setCustomNavigator(spaGoTo);
+
+            // -------------------------------------------------------------
+            // Mount & Event Listeners
+            // -------------------------------------------------------------
+            onMounted(() => {
+                fetchStatuses();
+
+                // Hydrate initial active tab
+                if (window.SERVER_DBNAME) {
+                    baseSetup.sqlDb.value = window.SERVER_DBNAME;
+                    fetchSchema(window.SERVER_DBNAME, window.SERVER_INITIAL_TABLE);
+                }
+
+                // Handle Browser Back / Forward Navigation
+                window.addEventListener('popstate', (e) => {
+                    const path = window.location.pathname;
+                    if (path === window.PROFILE_ROOT) {
+                        activateTab('dashboard', false);
+                    } else {
+                        const dbMatch = path.match(new RegExp(window.PROFILE_ROOT + 'db/([^/]+)(?:/table/([^/]+))?'));
+                        if (dbMatch) {
+                            const dbName = decodeURIComponent(dbMatch[1]);
+                            const tableName = dbMatch[2] ? decodeURIComponent(dbMatch[2]) : null;
+                            openDatabaseTab(dbName, tableName, false);
+                        }
+                    }
+                });
+
+                // Keybindings: C key instant copy & Cmd+J Palette
+                window.addEventListener('keydown', (e) => {
+                    const tag = e.target.tagName.toLowerCase();
+                    if (tag !== 'input' && tag !== 'textarea' && !e.target.isContentEditable) {
+                        if (e.key.toLowerCase() === 'c') isCHeld.value = true;
+                    }
+
+                    if ((e.metaKey || e.ctrlKey) && e.key === 'j') {
+                        e.preventDefault();
+                        if (activeTab.value?.type === 'db') {
+                            showCmdJ.value = true;
+                            cmdJSearch.value = '';
+                            cmdJIndex.value = 0;
+                            setTimeout(() => { if(cmdJInput.value) cmdJInput.value.focus(); }, 50);
+                        }
+                    }
+
+                    if (e.key === 'Escape') {
+                        if (showActionsDropdown.value) showActionsDropdown.value = false;
+                        if (columnManager.showColumnDropdown.value) columnManager.showColumnDropdown.value = false;
+                        if (inspector.inspectorModal.value.open) inspector.closeInspector();
+                        if (cellEditModal.value.open) cancelCellEdit();
+                        if (showCmdJ.value) showCmdJ.value = false;
+                    }
+                });
+
+                window.addEventListener('keyup', (e) => {
+                    if (e.key.toLowerCase() === 'c') isCHeld.value = false;
+                });
+                window.addEventListener('blur', () => isCHeld.value = false);
+            });
+
+            return {
+                ...baseSetup,
+                // SPA Views
+                openTabs, activeTabId, activeTab, activeView, activeDb, activateTab, closeTab, openDatabaseTab, switchToDashboardTab,
+                // Dashboard
+                databases, newDbName, isAdding, addDb, removeDb,
+                isImporting, fileInput, importDbName, triggerFileInput, handleImport, exportDb,
+                showBrowseModal, remoteDatabases, isLoadingRemote, openBrowseModal, addRemoteDb,
+                newRemoteDbName, isCreatingRemote, createRemoteDb, deleteRemoteDb,
+                // Database Viewer
+                sidebarWidth, startResize,
+                showCmdJ, cmdJSearch, cmdJIndex, cmdJInput, cmdJList, filteredCmdJTables, cmdJNav, cmdJSelect, cmdJExecute,
+                schemaLoading, schemaError, tables, views, showViews, schema, expandedSchema, toggleSchema,
+                activeTable, selectTable,
+                rows, dataLoading, currentPage, limit, totalRows, totalPages, searchQuery, activeFilter, loadData, clearFilter,
+                showActionsDropdown,
+                sortColumn, sortDirection, toggleSort, colWidths, startColResize,
+                cellEditModal, cellEditTextarea, startCellEdit, cancelCellEdit, saveCellEdit, Math,
+                ...inspector,
+                ...batchSelection,
+                deleteSelectedRows: () => batchSelection.deleteSelectedRows(baseSetup.customConfirm, baseSetup.showToast),
+                ...columnManager,
+                ...erd,
+                showAddRowModal, addRowData, isSavingRow, openAddRowModal, saveNewRow, deleteRow, exportCSV, teleport,
+                copyToClipboard, copiedCell, handleCellClick
+            };
+        }
+    }).mount('#app');
+</script>
+{% endblock %}

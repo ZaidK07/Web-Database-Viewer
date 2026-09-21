@@ -32,11 +32,12 @@ def validated_columns(adapter, conn, table):
 
 @databases_bp.route('/p/<profile_name>/')
 def index(profile_name):
-    profile = get_profile(profile_name)
-    if not profile:
+    try:
+        profile = require_profile(profile_name)
+        statuses = [{'name': db, 'accessible': None} for db in profile.get('databases', [])]
+        return render_template('workspace.html', databases=statuses, profile=profile, dbname=None, initial_table=None)
+    except Exception:
         return redirect(url_for('profiles.profile_selector'))
-    statuses = [{'name': db, 'accessible': None} for db in profile.get('databases', [])]
-    return render_template('index.html', databases=statuses, profile=profile)
 
 
 @databases_bp.route('/p/<profile_name>/db/<dbname>')
@@ -44,11 +45,11 @@ def index(profile_name):
 def database_view(profile_name, dbname, tablename=None):
     try:
         profile = require_profile(profile_name)
-        return render_template('database.html', dbname=dbname, tables=[], views=[],
-                               initial_table=tablename, profile=profile)
-    except Exception as error:
-        return render_template('database.html', dbname=dbname, error=str(error), tables=[],
-                               views=[], initial_table=tablename, profile=get_profile(profile_name))
+        statuses = [{'name': db, 'accessible': None} for db in profile.get('databases', [])]
+        return render_template('workspace.html', databases=statuses, profile=profile, dbname=dbname,
+                               tables=[], views=[], initial_table=tablename)
+    except Exception:
+        return redirect(url_for('profiles.profile_selector'))
 
 
 @databases_bp.route('/api/p/<profile_name>/dbs/<dbname>/check')
