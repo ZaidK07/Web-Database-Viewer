@@ -201,6 +201,7 @@
 
 {% block scripts %}
 <script>
+    const { createApp } = Vue;
     createApp({ setup() { return window.baseAppSetup(); } }).mount('#app');
 </script>
 {% endblock %}

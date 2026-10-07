@@ -411,77 +411,7 @@
     {% include 'components/inspector_modal.html' %}
 
     <!-- Edit Cell Modal -->
-    <div v-if="cellEditModal.open" @keydown.esc.stop="cancelCellEdit" class="fixed inset-0 z-[60] flex items-center justify-center p-4">
-        <div class="absolute inset-0 bg-slate-900/40 dark:bg-slate-950/60 backdrop-blur-sm" @click="cancelCellEdit"></div>
-        <div class="relative bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-150">
-            <!-- Header -->
-            <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50">
-                <div class="flex items-center gap-3">
-                    <div class="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950/60 flex items-center justify-center text-brand-600 dark:text-brand-400 border border-brand-200 dark:border-brand-800/60">
-                        <i class="ph-bold ph-pencil-simple text-lg"></i>
-                    </div>
-                    <div>
-                        <h3 class="text-base font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                            Edit Cell
-                            <span class="text-xs font-mono font-medium px-2 py-0.5 rounded-md bg-brand-100 dark:bg-brand-900/40 text-brand-700 dark:text-brand-300">{% raw %}{{ cellEditModal.colField }}{% endraw %}</span>
-                        </h3>
-                        <p class="text-[11px] text-slate-400 dark:text-slate-500">
-                            Table: <span class="font-medium text-slate-600 dark:text-slate-300">{% raw %}{{ activeTable }}{% endraw %}</span>
-                            <span v-if="cellEditModal.colType" class="ml-2 font-mono">({% raw %}{{ cellEditModal.colType }}{% endraw %})</span>
-                        </p>
-                    </div>
-                </div>
-                <button @click="cancelCellEdit" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800">
-                    <i class="ph-bold ph-x text-lg"></i>
-                </button>
-            </div>
-            
-            <!-- Body -->
-            <div class="p-6 space-y-4">
-                <div class="flex items-center justify-between">
-                    <label class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                        Cell Value
-                    </label>
-                    <label class="flex items-center gap-2 cursor-pointer select-none text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200">
-                        <input type="checkbox" v-model="cellEditModal.isNull" class="rounded border-slate-300 text-brand-600 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-800" />
-                        <span>Set to NULL</span>
-                    </label>
-                </div>
-
-                <div v-if="cellEditModal.isNull" class="py-8 px-4 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 text-center flex flex-col items-center justify-center gap-1">
-                    <span class="text-xs font-mono font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2.5 py-1 rounded border border-amber-200 dark:border-amber-800/60">NULL</span>
-                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">This field will be saved as a database NULL value.</p>
-                </div>
-                <div v-else>
-                    <textarea 
-                        ref="cellEditTextarea"
-                        v-model="cellEditModal.value" 
-                        @keydown.ctrl.enter.prevent="saveCellEdit" 
-                        @keydown.meta.enter.prevent="saveCellEdit"
-                        @keydown.esc="cancelCellEdit"
-                        rows="5" 
-                        placeholder="Enter cell value..." 
-                        class="w-full px-3.5 py-2.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-slate-100 rounded-xl text-sm font-mono focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 shadow-sm placeholder:text-slate-400 dark:placeholder:text-slate-600 resize-y"></textarea>
-                    <div class="flex justify-between items-center mt-1.5 text-[11px] text-slate-400 dark:text-slate-500">
-                        <span>Press <kbd class="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[10px] font-mono">⌘+Enter</kbd> or <kbd class="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[10px] font-mono">Ctrl+Enter</kbd> to save</span>
-                        <span>{% raw %}{{ (cellEditModal.value || '').length }}{% endraw %} chars</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Footer -->
-            <div class="px-6 py-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex justify-end gap-3">
-                <button @click="cancelCellEdit" type="button" class="px-4 py-2 rounded-xl text-slate-600 dark:text-slate-400 font-medium hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors text-sm">
-                    Cancel
-                </button>
-                <button @click="saveCellEdit" :disabled="cellEditModal.isSaving" type="button" class="px-6 py-2 rounded-xl bg-brand-600 text-white font-bold hover:bg-brand-700 shadow-sm flex items-center gap-2 disabled:opacity-50 text-sm">
-                    <i v-if="cellEditModal.isSaving" class="ph ph-spinner animate-spin"></i>
-                    <i v-else class="ph-bold ph-check"></i>
-                    Save Changes
-                </button>
-            </div>
-        </div>
-    </div>
+    {% include 'components/edit_cell_modal.html' %}
 
     <!-- Add Row Modal -->
     <div v-if="showAddRowModal" class="fixed inset-0 z-[60] flex items-center justify-center p-4">

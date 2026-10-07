@@ -2,6 +2,7 @@ import os
 import subprocess
 import pymysql
 from pymysql.constants import CLIENT
+from .pool import global_pool
 
 
 class MySQLAdapter:
@@ -10,7 +11,7 @@ class MySQLAdapter:
     def __init__(self, profile):
         self.profile = profile
 
-    def connect(self, database=None, admin=False, dict_rows=True, timeout=5):
+    def connect(self, database=None, admin=False, dict_rows=True, timeout=5, pooled=True):
         config = {k: self.profile[k] for k in ('host', 'port', 'user', 'password')}
         if database:
             config['database'] = database
@@ -19,7 +20,24 @@ class MySQLAdapter:
         if timeout:
             config['connect_timeout'] = timeout
         config['client_flag'] = CLIENT.MULTI_STATEMENTS
-        return pymysql.connect(**config)
+
+        if not pooled:
+            return pymysql.connect(**config)
+
+        pool_key = ('mysql', self.profile.get('name'), self.profile['host'], self.profile['port'],
+                    self.profile['user'], database or '', dict_rows)
+
+        def creator():
+            return pymysql.connect(**config)
+
+        def validator(conn):
+            try:
+                conn.ping(reconnect=True)
+                return True
+            except Exception:
+                return False
+
+        return global_pool.get_connection(pool_key, creator, validator)
 
     @staticmethod
     def quote(name):
@@ -27,6 +45,9 @@ class MySQLAdapter:
 
     def table_ref(self, table):
         return self.quote(table)
+
+    def insert_suffix(self, primary_keys):
+        return ''
 
     def list_databases(self):
         with self.connect(dict_rows=False) as conn, conn.cursor() as cursor:
@@ -47,7 +68,12 @@ class MySQLAdapter:
             return [next(iter(row.values())) for row in cursor.fetchall()]
 
     def list_views(self, conn):
-        return []
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute("SHOW FULL TABLES WHERE Table_type = 'VIEW'")
+                return [next(iter(row.values())) if isinstance(row, dict) else row[0] for row in cursor.fetchall()]
+        except Exception:
+            return []
 
     def columns(self, conn, table):
         with conn.cursor() as cursor:

@@ -6,6 +6,7 @@ from services.profiles import (
     get_profiles_data,
     get_sqlite_conn
 )
+from adapters.pool import global_pool
 
 profiles_bp = Blueprint('profiles', __name__)
 
@@ -124,6 +125,7 @@ def update_profile(name):
             ''', (engine, host, port, user, password, schema, sslmode, name))
         conn.commit()
 
+    global_pool.clear()
     return jsonify(success=True, name=new_name)
 
 
@@ -145,6 +147,7 @@ def delete_profile(name):
             cursor.execute('UPDATE meta SET value = ? WHERE key = "active"', (new_active,))
         conn.commit()
 
+    global_pool.clear()
     return jsonify(success=True)
 
 

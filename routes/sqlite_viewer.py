@@ -4,7 +4,7 @@ import os
 import sqlite3
 import time
 from flask import (
-    Blueprint, Response, jsonify, render_template, request, send_file
+    Blueprint, Response, jsonify, render_template, request, send_file, stream_with_context
 )
 from adapters.sqlite import SQLiteAdapter
 from services.query_history import record_query
@@ -249,15 +249,39 @@ def export_table_csv(file_id, tablename):
         adapter = SQLiteAdapter(file_info['file_path'])
         with adapter.connect() as conn:
             columns = validated_columns(adapter, conn, tablename)
-            cursor = conn.cursor()
-            cursor.execute(f'SELECT * FROM {adapter.table_ref(tablename)}')
-            rows = [dict(r) for r in cursor.fetchall()]
-        output = io.StringIO()
-        writer = csv.DictWriter(output, fieldnames=columns)
-        writer.writeheader()
-        writer.writerows(rows)
-        return Response(output.getvalue(), mimetype='text/csv', headers={
-            'Content-Disposition': f'attachment; filename="{tablename}_export.csv"'})
+        if not columns:
+            return api_error('Table not found or has no columns', 404)
+
+        def generate_csv():
+            buf = io.StringIO()
+            writer = csv.writer(buf)
+            writer.writerow(columns)
+            yield buf.getvalue()
+            buf.seek(0)
+            buf.truncate(0)
+
+            with adapter.connect() as conn:
+                cursor = conn.cursor()
+                cursor.execute(f'SELECT * FROM {adapter.table_ref(tablename)}')
+                while True:
+                    batch = cursor.fetchmany(1000)
+                    if not batch:
+                        break
+                    for row in batch:
+                        if isinstance(row, sqlite3.Row):
+                            writer.writerow([row[col] for col in columns])
+                        elif isinstance(row, dict):
+                            writer.writerow([row.get(col) for col in columns])
+                        else:
+                            writer.writerow([row[col] for col in columns])
+                    yield buf.getvalue()
+                    buf.seek(0)
+                    buf.truncate(0)
+
+        response = Response(stream_with_context(generate_csv()), mimetype='text/csv')
+        response.headers['Content-Disposition'] = f'attachment; filename="{tablename}_export.csv"'
+        response.headers['Cache-Control'] = 'no-cache'
+        return response
     except Exception as error:
         return api_error(error)
 

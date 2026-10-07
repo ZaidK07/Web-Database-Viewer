@@ -1,5 +1,6 @@
 import os
 import subprocess
+from .pool import global_pool
 
 try:
     import psycopg
@@ -18,7 +19,7 @@ class PostgreSQLAdapter:
         self.profile = profile
         self.schema = profile.get('schema') or 'public'
 
-    def connect(self, database=None, admin=False, dict_rows=True, timeout=5):
+    def connect(self, database=None, admin=False, dict_rows=True, timeout=5, pooled=True):
         dbname = database or self.profile.get('maintenance_database') or 'postgres'
         kwargs = {
             'host': self.profile['host'], 'port': self.profile['port'],
@@ -31,7 +32,20 @@ class PostgreSQLAdapter:
             kwargs['row_factory'] = dict_row
         if self.profile.get('sslmode'):
             kwargs['sslmode'] = self.profile['sslmode']
-        return psycopg.connect(**kwargs)
+
+        if not pooled:
+            return psycopg.connect(**kwargs)
+
+        pool_key = ('postgres', self.profile.get('name'), self.profile['host'], self.profile['port'],
+                    self.profile['user'], dbname, self.profile.get('sslmode', ''), dict_rows)
+
+        def creator():
+            return psycopg.connect(**kwargs)
+
+        def validator(conn):
+            return not getattr(conn, 'closed', False) and not getattr(conn, 'broken', False)
+
+        return global_pool.get_connection(pool_key, creator, validator)
 
     @staticmethod
     def quote(name):
@@ -39,6 +53,9 @@ class PostgreSQLAdapter:
 
     def table_ref(self, table):
         return f'{self.quote(self.schema)}.{self.quote(table)}'
+
+    def insert_suffix(self, primary_keys):
+        return f' RETURNING {self.quote(primary_keys[0])}' if primary_keys else ''
 
     def list_databases(self):
         with self.connect() as conn, conn.cursor() as cursor:

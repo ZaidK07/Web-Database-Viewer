@@ -1,5 +1,6 @@
 import os
 import sqlite3
+from .pool import global_pool
 
 
 class SQLiteAdapter:
@@ -10,11 +11,31 @@ class SQLiteAdapter:
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"SQLite file not found: {file_path}")
 
-    def connect(self, dict_rows=True):
-        conn = sqlite3.connect(self.file_path)
-        if dict_rows:
-            conn.row_factory = sqlite3.Row
-        return conn
+    def connect(self, dict_rows=True, pooled=True):
+        if not pooled:
+            conn = sqlite3.connect(self.file_path, timeout=15)
+            conn.execute('PRAGMA busy_timeout = 5000')
+            if dict_rows:
+                conn.row_factory = sqlite3.Row
+            return conn
+
+        pool_key = ('sqlite', self.file_path, dict_rows)
+
+        def creator():
+            conn = sqlite3.connect(self.file_path, timeout=15)
+            conn.execute('PRAGMA busy_timeout = 5000')
+            if dict_rows:
+                conn.row_factory = sqlite3.Row
+            return conn
+
+        def validator(conn):
+            try:
+                conn.execute('SELECT 1')
+                return True
+            except Exception:
+                return False
+
+        return global_pool.get_connection(pool_key, creator, validator)
 
     @staticmethod
     def quote(name):
