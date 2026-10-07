@@ -217,22 +217,109 @@
                                 </div>
 
                                 <div class="relative flex items-center group">
-                                    <div class="absolute left-3.5 pointer-events-none flex items-center text-brand-500 text-sm">
+                                    <div class="absolute left-3.5 pointer-events-none flex items-center text-brand-500 text-sm z-10">
                                         <i class="ph-bold ph-database"></i>
                                     </div>
-                                    <select v-model="sqlDb"
-                                            class="w-full h-10 pl-9 pr-14 appearance-none rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-bold text-xs focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 transition-all shadow-xs cursor-pointer hover:border-slate-300 dark:hover:border-slate-600">
-                                        <option v-if="!dbList.length" value="" disabled>No databases available</option>
-                                        <option v-for="db in dbList" :key="db.id || db.name" :value="db.id || db.name" class="py-1.5 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100">
-                                            {% raw %}{{ db.original_name || db.name }}{% endraw %}
-                                        </option>
-                                    </select>
-                                    <div class="absolute right-3 pointer-events-none flex items-center gap-1.5 text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-300 transition-colors">
-                                        <span v-if="dbList.length > 1" class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400">
+                                    
+                                    <!-- Trigger Button -->
+                                    <button ref="sqlDbDropdownBtn"
+                                            @click="toggleSqlDbDropdown"
+                                            @keydown="handleSqlDbKeydown"
+                                            type="button"
+                                            :class="showSqlDbDropdown ? 'border-brand-500 ring-2 ring-brand-500/20 bg-white dark:bg-slate-800' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600'"
+                                            class="w-full h-10 pl-9 pr-14 flex items-center rounded-xl border text-slate-800 dark:text-slate-100 font-bold text-xs focus:outline-none transition-all shadow-xs cursor-pointer select-none">
+                                        <span class="truncate block w-full text-left font-mono text-[11px]">
+                                            <span v-if="!dbList.length" class="text-slate-400 font-normal font-sans text-xs">No databases available</span>
+                                            <span v-else>{% raw %}{{ getDbDisplayName(sqlDb) || 'Select database...' }}{% endraw %}</span>
+                                        </span>
+                                    </button>
+                                    
+                                    <!-- Right side indicators -->
+                                    <div class="absolute right-3 pointer-events-none flex items-center gap-1.5 text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-300 transition-colors z-10">
+                                        <span v-if="dbList.length > 1" class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 font-mono">
                                             {% raw %}{{ dbList.length }}{% endraw %}
                                         </span>
-                                        <i class="ph-bold ph-caret-down text-xs"></i>
+                                        <i class="ph-bold ph-caret-down text-xs transition-transform duration-200"
+                                           :class="{'rotate-180 text-brand-500': showSqlDbDropdown}"></i>
                                     </div>
+
+                                    <!-- Teleported Dropdown Menu -->
+                                    <teleport to="body">
+                                        <!-- Backdrop for closing on outside clicks -->
+                                        <div v-if="showSqlDbDropdown" @click.stop="showSqlDbDropdown = false" class="fixed inset-0 z-[9998] cursor-default"></div>
+
+                                        <!-- Dropdown Menu Box -->
+                                        <div v-if="showSqlDbDropdown"
+                                             :style="sqlDbDropdownStyles"
+                                             :class="sqlDbDropdownPlacement === 'top' ? 'origin-bottom slide-in-from-bottom-2' : 'origin-top slide-in-from-top-2'"
+                                             class="fixed z-[9999] rounded-2xl border border-slate-200/90 dark:border-slate-700/80 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                                            
+                                            <!-- Search & Filter Header -->
+                                            <div v-if="dbList.length > 4" class="p-2.5 border-b border-slate-100 dark:border-slate-800 shrink-0 bg-slate-50/60 dark:bg-slate-900/60">
+                                                <div class="relative flex items-center">
+                                                    <i class="ph-bold ph-magnifying-glass absolute left-2.5 text-slate-400 text-xs pointer-events-none"></i>
+                                                    <input type="text"
+                                                           v-model="sqlDbSearch"
+                                                           ref="sqlDbSearchInput"
+                                                           placeholder="Search databases..."
+                                                           @keydown="handleSqlDbKeydown"
+                                                           class="w-full pl-8 pr-7 py-1.5 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:border-brand-500 dark:focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 text-slate-800 dark:text-slate-100 placeholder:text-slate-400" />
+                                                    <button v-if="sqlDbSearch"
+                                                            @click="sqlDbSearch = ''; sqlDbSearchInput?.focus()"
+                                                            type="button"
+                                                            class="absolute right-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5 rounded transition-colors"
+                                                            title="Clear search">
+                                                        <i class="ph-bold ph-x text-[10px]"></i>
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            <!-- Database Options Scrollable Area -->
+                                            <div class="overflow-y-auto overscroll-contain flex-1 p-1.5 space-y-0.5 min-h-[80px]">
+                                                <!-- Empty Search Result -->
+                                                <div v-if="filteredSqlDbList.length === 0" class="py-6 px-4 text-center">
+                                                    <i class="ph-duotone ph-database text-2xl text-slate-300 dark:text-slate-600 mb-1.5 block"></i>
+                                                    <div class="text-xs font-semibold text-slate-600 dark:text-slate-400">No databases found</div>
+                                                    <div class="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 truncate">Matching "{% raw %}{{ sqlDbSearch }}{% endraw %}"</div>
+                                                </div>
+
+                                                <!-- Items List -->
+                                                <button v-for="(db, idx) in filteredSqlDbList"
+                                                        :key="db.id || db.name"
+                                                        :data-db-highlighted="highlightedDbIndex === idx"
+                                                        :data-db-active="sqlDb === (db.id || db.name)"
+                                                        @click="selectSqlDb(db.id || db.name)"
+                                                        @mouseenter="highlightedDbIndex = idx"
+                                                        type="button"
+                                                        class="w-full text-left px-2.5 py-2 text-xs rounded-lg flex items-center justify-between transition-colors group cursor-pointer"
+                                                        :class="[
+                                                            sqlDb === (db.id || db.name)
+                                                                ? 'bg-brand-50 dark:bg-brand-950/50 text-brand-700 dark:text-brand-300 font-semibold'
+                                                                : (highlightedDbIndex === idx
+                                                                    ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium'
+                                                                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60')
+                                                        ]">
+                                                    <div class="flex items-center gap-2 min-w-0 flex-1">
+                                                        <i class="ph-duotone ph-database text-base shrink-0 transition-transform group-hover:scale-110"
+                                                           :class="sqlDb === (db.id || db.name) ? 'text-brand-500' : 'text-slate-400 dark:text-slate-500'"></i>
+                                                        <span class="truncate font-mono text-[11px]">{% raw %}{{ db.original_name || db.name }}{% endraw %}</span>
+                                                    </div>
+                                                    <div class="flex items-center gap-1.5 shrink-0 ml-2">
+                                                        <span v-if="sqlDb === (db.id || db.name)" class="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded bg-brand-100/70 dark:bg-brand-900/50 text-brand-600 dark:text-brand-300">
+                                                            Active
+                                                        </span>
+                                                        <i v-if="sqlDb === (db.id || db.name)" class="ph-bold ph-check text-brand-500 text-xs"></i>
+                                                    </div>
+                                                </button>
+                                            </div>
+
+                                            <!-- Footer Counter / Quick Hint -->
+                                            <div v-if="filteredSqlDbList.length > 0" class="px-3 py-1.5 border-t border-slate-100 dark:border-slate-800 text-[10px] text-slate-400 dark:text-slate-500 flex items-center justify-between shrink-0 bg-slate-50/50 dark:bg-slate-900/50">
+                                                <span class="font-medium">{% raw %}{{ filteredSqlDbList.length }}{% endraw %} of {% raw %}{{ dbList.length }}{% endraw %} databases</span>
+                                                <span class="hidden sm:inline">↑↓ navigate · Enter select</span>
+                                            </div>
+                                        </div>
+                                    </teleport>
                                 </div>
                             </div>
 
@@ -868,6 +955,104 @@
             const showSqlDbDropdown = ref(false);
             const sqlDbSearch = ref('');
             const sqlDbSearchInput = ref(null);
+            const sqlDbDropdownBtn = ref(null);
+            const sqlDbDropdownStyles = ref({});
+            const sqlDbDropdownPlacement = ref('bottom');
+            const highlightedDbIndex = ref(-1);
+
+            const updateSqlDbDropdownPosition = () => {
+                if (!sqlDbDropdownBtn.value) return;
+                const rect = sqlDbDropdownBtn.value.getBoundingClientRect();
+                const viewportHeight = window.innerHeight;
+                const viewportWidth = window.innerWidth;
+
+                // Available vertical space
+                const spaceBelow = viewportHeight - rect.bottom - 12;
+                const spaceAbove = rect.top - 12;
+
+                // Auto-flip: if space below is tight (<260px) and there is more room above, flip upwards
+                const openUp = spaceBelow < 260 && spaceAbove > spaceBelow;
+                sqlDbDropdownPlacement.value = openUp ? 'top' : 'bottom';
+
+                // Strictly clamp max height to available space so it never clips against the screen boundary
+                const availableSpace = openUp ? spaceAbove : spaceBelow;
+                const maxMenuHeight = Math.min(380, Math.max(160, availableSpace - 8));
+
+                // Clamp horizontal position so it stays within viewport
+                const targetWidth = Math.min(Math.max(rect.width, 240), viewportWidth - 20);
+                let targetLeft = rect.left;
+                if (targetLeft + targetWidth > viewportWidth - 10) {
+                    targetLeft = viewportWidth - targetWidth - 10;
+                }
+                if (targetLeft < 10) targetLeft = 10;
+
+                const baseStyles = {
+                    position: 'fixed',
+                    left: `${targetLeft}px`,
+                    width: `${targetWidth}px`,
+                    maxHeight: `${maxMenuHeight}px`,
+                    zIndex: 9999
+                };
+
+                if (openUp) {
+                    baseStyles.bottom = `${viewportHeight - rect.top + 6}px`;
+                    baseStyles.top = 'auto';
+                } else {
+                    baseStyles.top = `${rect.bottom + 6}px`;
+                    baseStyles.bottom = 'auto';
+                }
+
+                sqlDbDropdownStyles.value = baseStyles;
+            };
+
+            const toggleSqlDbDropdown = () => {
+                if (!showSqlDbDropdown.value) {
+                    updateSqlDbDropdownPosition();
+                    showSqlDbDropdown.value = true;
+                    const currentIdx = filteredSqlDbList.value.findIndex(d => (d.id || d.name) === sqlDb.value || d === sqlDb.value);
+                    highlightedDbIndex.value = currentIdx >= 0 ? currentIdx : 0;
+                } else {
+                    showSqlDbDropdown.value = false;
+                }
+            };
+
+            const selectSqlDb = (dbVal) => {
+                sqlDb.value = dbVal;
+                showSqlDbDropdown.value = false;
+                sqlDbSearch.value = '';
+            };
+
+            const scrollToHighlightedDb = () => {
+                Vue.nextTick(() => {
+                    const el = document.querySelector('[data-db-highlighted="true"]');
+                    if (el) el.scrollIntoView({ block: 'nearest' });
+                });
+            };
+
+            const handleSqlDbKeydown = (e) => {
+                if (!showSqlDbDropdown.value) return;
+                const list = filteredSqlDbList.value;
+                if (!list.length) return;
+
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    highlightedDbIndex.value = (highlightedDbIndex.value + 1) % list.length;
+                    scrollToHighlightedDb();
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    highlightedDbIndex.value = (highlightedDbIndex.value - 1 + list.length) % list.length;
+                    scrollToHighlightedDb();
+                } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (highlightedDbIndex.value >= 0 && highlightedDbIndex.value < list.length) {
+                        const target = list[highlightedDbIndex.value];
+                        selectSqlDb(target.id || target.name || target);
+                    }
+                } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    showSqlDbDropdown.value = false;
+                }
+            };
 
             const filteredSqlDbList = computed(() => {
                 const list = dbList.value || [];
@@ -886,18 +1071,24 @@
                 return dbVal;
             };
 
-            const selectSqlDb = (dbVal) => {
-                sqlDb.value = dbVal;
-                showSqlDbDropdown.value = false;
-                sqlDbSearch.value = '';
-            };
-
             watch(showSqlDbDropdown, (isOpen) => {
-                if (isOpen && (dbList.value || []).length > 4) {
-                    setTimeout(() => {
+                if (isOpen) {
+                    updateSqlDbDropdownPosition();
+                    window.addEventListener('resize', updateSqlDbDropdownPosition);
+                    window.addEventListener('scroll', updateSqlDbDropdownPosition, true);
+                    Vue.nextTick(() => {
                         if (sqlDbSearchInput.value) sqlDbSearchInput.value.focus();
-                    }, 50);
+                        scrollToHighlightedDb();
+                    });
+                } else {
+                    window.removeEventListener('resize', updateSqlDbDropdownPosition);
+                    window.removeEventListener('scroll', updateSqlDbDropdownPosition, true);
                 }
+            });
+
+            watch(sqlDbSearch, () => {
+                highlightedDbIndex.value = 0;
+                updateSqlDbDropdownPosition();
             });
 
             watch(sqlDb, (newDb) => {
@@ -1623,7 +1814,7 @@
                 showSqlPanel, sqlPosition, setSqlPosition, sqlPanelWidth, sqlPanelHeight, isResizingSql, startSqlResizeRight, startSqlResizeBottom, sqlDb, sqlQuery, sqlLoading, sqlError, sqlSuccess, sqlRows, sqlIsSelect, sqlAffected, sqlResultTime, dbList, currentTable, executeSql,
                 sqlTab, setSqlTab, sqlEditorEl, sqlSchemaInfo, sqlHasSelection,
                 sqlDiagnostics, topDiagnostic, applySqlQuickFix,
-                showSqlDbDropdown, sqlDbSearch, sqlDbSearchInput, filteredSqlDbList, getDbDisplayName, selectSqlDb,
+                showSqlDbDropdown, sqlDbSearch, sqlDbSearchInput, sqlDbDropdownBtn, sqlDbDropdownStyles, sqlDbDropdownPlacement, highlightedDbIndex, handleSqlDbKeydown, toggleSqlDbDropdown, filteredSqlDbList, getDbDisplayName, selectSqlDb,
                 showHistoryModal, historySearchInput, openHistoryModal, selectHistoryItem,
                 historyItems, historyLoading, historySearch, historyStarredOnly, historyCurrentDbOnly,
                 fetchHistory, toggleHistoryStar, deleteHistoryItem, clearHistory, copyHistoryItem, loadHistoryItem, timeAgo,
