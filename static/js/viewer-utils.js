@@ -546,7 +546,7 @@ window.createErdModule = function(Vue, schemaGetter, onSelectTable, getStorageKe
                 const sourceRowY = sourceIdx >= 0 ? (sourcePos.y + 44 + (sourceIdx * 28) + 14) : (sourcePos.y + 22);
                 const targetRowY = targetIdx >= 0 ? (targetPos.y + 44 + (targetIdx * 28) + 14) : (targetPos.y + 22);
 
-                const cardWidth = 260;
+                const cardWidth = 280;
                 let startX, endX;
 
                 if (sourcePos.x + cardWidth < targetPos.x) {
@@ -588,28 +588,56 @@ window.createErdModule = function(Vue, schemaGetter, onSelectTable, getStorageKe
         return links;
     });
 
-    // Auto arrange nodes in a responsive grid
+    // Auto arrange nodes in a clean, non-overlapping grid layout
     const autoArrange = () => {
         const schema = getSchema();
         const tables = Object.keys(schema);
         if (tables.length === 0) return;
 
-        const cardWidth = 260;
-        const colCount = Math.max(2, Math.min(4, Math.ceil(Math.sqrt(tables.length))));
-        const gapX = 80;
-        const colHeights = new Array(colCount).fill(40);
+        const cardWidth = 280;
+        const gapX = 100;
+        const gapY = 60;
+
+        // Determine number of columns based on table count
+        let colCount = 3;
+        if (tables.length <= 2) colCount = tables.length;
+        else if (tables.length <= 6) colCount = 3;
+        else if (tables.length <= 12) colCount = 4;
+        else if (tables.length <= 24) colCount = 5;
+        else colCount = Math.min(8, Math.ceil(Math.sqrt(tables.length * 1.5)));
+
+        const colHeights = new Array(colCount).fill(60);
         const newPositions = {};
 
-        tables.forEach((table, i) => {
-            const colIndex = i % colCount;
-            const x = 40 + colIndex * (cardWidth + gapX);
-            const y = colHeights[colIndex];
+        // Sort tables so tables with FK relationships / dependencies appear organized
+        const degree = {};
+        tables.forEach(t => { degree[t] = 0; });
+        tables.forEach(t => {
+            const fks = schema[t]?.foreign_keys || {};
+            Object.values(fks).forEach(target => {
+                if (target && target.table && degree[target.table] !== undefined) {
+                    degree[target.table]++;
+                    degree[t]++;
+                }
+            });
+        });
+
+        const sortedTables = [...tables].sort((a, b) => {
+            return (degree[b] - degree[a]) || a.localeCompare(b);
+        });
+
+        // Bin-pack: Place each table in the column with the minimum current height
+        sortedTables.forEach((table) => {
+            const minCol = colHeights.indexOf(Math.min(...colHeights));
+            const x = 60 + minCol * (cardWidth + gapX);
+            const y = colHeights[minCol];
 
             newPositions[table] = { x, y };
 
+            // Exact card height: header (44px) + column list (each 28px, max 360px) + padding (16px)
             const colCountEstimate = (schema[table]?.columns || []).length;
-            const cardHeight = 44 + (colCountEstimate * 28) + 16;
-            colHeights[colIndex] += cardHeight + 40;
+            const cardHeight = 44 + Math.min(360, (colCountEstimate * 28) + 8) + 16;
+            colHeights[minCol] += cardHeight + gapY;
         });
 
         tablePositions.value = newPositions;
@@ -669,7 +697,7 @@ window.createErdModule = function(Vue, schemaGetter, onSelectTable, getStorageKe
         }
     };
 
-    // Card Dragging
+    // Card Dragging (Unrestricted Infinite Canvas)
     const startDragCard = (e, tableName) => {
         if (e.button !== 0) return;
         isDraggingCard.value = true;
@@ -702,7 +730,7 @@ window.createErdModule = function(Vue, schemaGetter, onSelectTable, getStorageKe
             const newY = Math.round((e.clientY / erdZoom.value) - dragOffset.value.y);
             tablePositions.value = {
                 ...tablePositions.value,
-                [table]: { x: Math.max(0, newX), y: Math.max(0, newY) }
+                [table]: { x: newX, y: newY }
             };
         } else if (isPanning.value) {
             erdPan.value = {

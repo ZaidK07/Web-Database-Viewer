@@ -1,0 +1,193 @@
+/* Raw SQL console editor theme (CodeMirror 5) — light + dark (html.dark) */
+
+.wdv-sql-editor .CodeMirror {
+    height: 100%;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size: 13px;
+    line-height: 1.55;
+    background: transparent;
+    color: #0f172a;
+}
+.wdv-sql-editor .CodeMirror-lines { padding: 10px 0; }
+.wdv-sql-editor .CodeMirror pre.CodeMirror-line,
+.wdv-sql-editor .CodeMirror pre.CodeMirror-line-like { padding: 0 10px; }
+.wdv-sql-editor .CodeMirror-gutters {
+    background: transparent;
+    border-right: 1px solid #e2e8f0;
+    width: auto;
+}
+.wdv-sql-editor .CodeMirror-linenumber {
+    color: #94a3b8;
+    padding: 0 4px 0 2px;
+    min-width: 14px;
+    font-size: 11px;
+}
+.wdv-sql-editor .CodeMirror-cursor { border-left: 2px solid #0284c7; }
+.wdv-sql-editor .CodeMirror-selected { background: #e0f2fe; }
+.wdv-sql-editor .CodeMirror-focused .CodeMirror-selected { background: #bae6fd; }
+.wdv-sql-editor .CodeMirror-line::selection,
+.wdv-sql-editor .CodeMirror-line > span::selection,
+.wdv-sql-editor .CodeMirror-line > span > span::selection { background: #bae6fd; }
+.wdv-sql-editor .CodeMirror-placeholder { color: #94a3b8 !important; }
+.wdv-sql-editor .CodeMirror-matchingbracket { color: inherit !important; background: #e0f2fe; outline: 1px solid #7dd3fc; }
+.wdv-sql-editor .CodeMirror-nonmatchingbracket { color: #dc2626 !important; }
+
+/* Active line colorful accent */
+.wdv-sql-editor .CodeMirror-activeline-background {
+    background: #f0f9ff;
+    border-left: 2px solid #0284c7;
+}
+.wdv-sql-editor .CodeMirror-activeline-gutter .CodeMirror-linenumber {
+    color: #0284c7 !important;
+    font-weight: 700;
+}
+
+.wdv-sql-editor .cm-keyword { color: #7c3aed; font-weight: 600; }
+.wdv-sql-editor .cm-builtin { color: #0369a1; }
+.wdv-sql-editor .cm-type { color: #0369a1; }
+.wdv-sql-editor .cm-string, .wdv-sql-editor .cm-string-2 { color: #059669; }
+.wdv-sql-editor .cm-number { color: #d97706; }
+.wdv-sql-editor .cm-atom { color: #db2777; }
+.wdv-sql-editor .cm-comment { color: #94a3b8; font-style: italic; }
+.wdv-sql-editor .cm-operator { color: #64748b; }
+.wdv-sql-editor .cm-variable-2, .wdv-sql-editor .cm-variable-3 { color: #0f766e; }
+.wdv-sql-editor .cm-bracket, .wdv-sql-editor .cm-punctuation { color: #64748b; }
+
+.dark .wdv-sql-editor .CodeMirror { color: #e2e8f0; }
+.dark .wdv-sql-editor .CodeMirror-gutters { border-right-color: #334155; }
+.dark .wdv-sql-editor .CodeMirror-linenumber { color: #64748b; }
+.dark .wdv-sql-editor .CodeMirror-activeline-background {
+    background: rgba(14, 165, 233, 0.09);
+    border-left: 2px solid #38bdf8;
+}
+.dark .wdv-sql-editor .CodeMirror-activeline-gutter .CodeMirror-linenumber {
+    color: #38bdf8 !important;
+    font-weight: 700;
+}
+.dark .wdv-sql-editor .CodeMirror-cursor { border-left-color: #38bdf8; }
+.dark .wdv-sql-editor .CodeMirror-selected { background: #1e293b; }
+.dark .wdv-sql-editor .CodeMirror-focused .CodeMirror-selected { background: #0c4a6e; }
+.dark .wdv-sql-editor .CodeMirror-line::selection,
+.dark .wdv-sql-editor .CodeMirror-line > span::selection,
+.dark .wdv-sql-editor .CodeMirror-line > span > span::selection { background: #0c4a6e; }
+.dark .wdv-sql-editor .CodeMirror-placeholder { color: #64748b !important; }
+.dark .wdv-sql-editor .CodeMirror-matchingbracket { background: #0c4a6e; outline-color: #0369a1; }
+.dark .wdv-sql-editor .cm-keyword { color: #c4b5fd; }
+.dark .wdv-sql-editor .cm-builtin, .dark .wdv-sql-editor .cm-type { color: #7dd3fc; }
+.dark .wdv-sql-editor .cm-string, .dark .wdv-sql-editor .cm-string-2 { color: #6ee7b7; }
+.dark .wdv-sql-editor .cm-number { color: #fcd34d; }
+.dark .wdv-sql-editor .cm-atom { color: #f9a8d4; }
+.dark .wdv-sql-editor .cm-comment { color: #64748b; }
+.dark .wdv-sql-editor .cm-operator,
+.dark .wdv-sql-editor .cm-bracket,
+.dark .wdv-sql-editor .cm-punctuation { color: #94a3b8; }
+.dark .wdv-sql-editor .cm-variable-2, .dark .wdv-sql-editor .cm-variable-3 { color: #5eead4; }
+
+/* Autocomplete popup (appended to <body>) */
+.CodeMirror-hints {
+    z-index: 1000;
+    padding: 4px;
+    min-width: 220px;
+    max-width: 440px;
+    max-height: 18rem;
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+    box-shadow: 0 12px 32px -8px rgba(15, 23, 42, 0.25);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 12px;
+}
+.CodeMirror-hint.wdv-hint {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    color: #1e293b;
+    white-space: nowrap;
+}
+li.CodeMirror-hint-active.wdv-hint { background: #e0f2fe; color: #075985; }
+.wdv-hint-badge {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+    font-family: "Outfit", sans-serif;
+}
+.wdv-hint-label { overflow: hidden; text-overflow: ellipsis; }
+.wdv-hint-detail {
+    margin-left: auto;
+    padding-left: 12px;
+    color: #94a3b8;
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 55%;
+}
+.wdv-hint-table .wdv-hint-badge { background: #e0f2fe; color: #0284c7; }
+.wdv-hint-view .wdv-hint-badge { background: #e0e7ff; color: #4f46e5; }
+.wdv-hint-column .wdv-hint-badge { background: #d1fae5; color: #059669; }
+.wdv-hint-keyword .wdv-hint-badge { background: #ede9fe; color: #7c3aed; }
+.wdv-hint-function .wdv-hint-badge { background: #fef3c7; color: #d97706; }
+
+.dark .CodeMirror-hints { background: #0f172a; border-color: #334155; box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.6); }
+.dark .CodeMirror-hint.wdv-hint { color: #e2e8f0; }
+.dark li.CodeMirror-hint-active.wdv-hint { background: #0c4a6e; color: #e0f2fe; }
+.dark .wdv-hint-detail { color: #64748b; }
+.dark .wdv-hint-table .wdv-hint-badge { background: rgba(14, 165, 233, 0.18); color: #7dd3fc; }
+.dark .wdv-hint-view .wdv-hint-badge { background: rgba(99, 102, 241, 0.2); color: #a5b4fc; }
+.dark .wdv-hint-column .wdv-hint-badge { background: rgba(16, 185, 129, 0.18); color: #6ee7b7; }
+.dark .wdv-hint-keyword .wdv-hint-badge { background: rgba(139, 92, 246, 0.2); color: #c4b5fd; }
+.dark .wdv-hint-function .wdv-hint-badge { background: rgba(245, 158, 11, 0.18); color: #fcd34d; }
+
+/* Real-time SQL Linting & Diagnostics Markers */
+.wdv-lint-error {
+    text-decoration: underline wavy #ef4444 2px;
+    text-underline-offset: 3px;
+    background-color: rgba(239, 68, 68, 0.08);
+    border-radius: 2px;
+}
+.dark .wdv-lint-error {
+    text-decoration: underline wavy #f87171 2px;
+    background-color: rgba(248, 113, 113, 0.14);
+}
+
+.wdv-lint-warning {
+    text-decoration: underline wavy #f59e0b 2px;
+    text-underline-offset: 3px;
+    background-color: rgba(245, 158, 11, 0.08);
+    border-radius: 2px;
+}
+.dark .wdv-lint-warning {
+    text-decoration: underline wavy #fbbf24 2px;
+    background-color: rgba(251, 191, 36, 0.14);
+}
+
+.wdv-line-error-bg {
+    background-color: rgba(239, 68, 68, 0.08) !important;
+}
+.dark .wdv-line-error-bg {
+    background-color: rgba(239, 68, 68, 0.14) !important;
+}
+.wdv-line-warning-bg {
+    background-color: rgba(245, 158, 11, 0.08) !important;
+}
+.dark .wdv-line-warning-bg {
+    background-color: rgba(245, 158, 11, 0.14) !important;
+}
+
+.wdv-line-error-gutter .CodeMirror-linenumber {
+    color: #ef4444 !important;
+    font-weight: 700;
+}
+.wdv-line-warning-gutter .CodeMirror-linenumber {
+    color: #f59e0b !important;
+    font-weight: 700;
+}
+
+

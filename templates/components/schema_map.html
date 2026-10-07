@@ -82,7 +82,7 @@
          :style="{ transform: 'translate(' + erdPan.x + 'px, ' + erdPan.y + 'px) scale(' + erdZoom + ')' }">
 
         <!-- SVG Connectors Layer -->
-        <svg class="absolute inset-0 pointer-events-none overflow-visible w-full h-full" style="min-width: 8000px; min-height: 8000px;">
+        <svg class="absolute inset-0 pointer-events-none overflow-visible w-full h-full">
             <defs>
                 <!-- Arrowhead marker -->
                 <marker id="erd-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
@@ -146,7 +146,7 @@
              :style="{
                  left: ((tablePositions[tbl] && tablePositions[tbl].x) || 0) + 'px',
                  top: ((tablePositions[tbl] && tablePositions[tbl].y) || 0) + 'px',
-                 width: '260px'
+                 width: '280px'
              }"
              @mouseenter="hoveredTable = tbl"
              @mouseleave="hoveredTable = null">

@@ -2,10 +2,12 @@ import csv
 import io
 import os
 import sqlite3
+import time
 from flask import (
     Blueprint, Response, jsonify, render_template, request, send_file
 )
 from adapters.sqlite import SQLiteAdapter
+from services.query_history import record_query
 from services.sqlite_storage import (
     save_uploaded_sqlite,
     list_uploaded_sqlite_files,
@@ -278,6 +280,12 @@ def execute_sql(file_id):
     query = (data.get('query') or '').strip()
     if not query:
         return api_error('Query is required', 400)
+    started = time.perf_counter()
+
+    def log_history(**kwargs):
+        record_query('sqlite', '', file_id, query, db_label=file_info.get('original_name') or file_id,
+                     duration_ms=int((time.perf_counter() - started) * 1000), **kwargs)
+
     try:
         adapter = SQLiteAdapter(file_info['file_path'])
         with adapter.connect() as conn:
@@ -285,9 +293,12 @@ def execute_sql(file_id):
             cursor.execute(query)
             if cursor.description:
                 rows = [dict(r) for r in cursor.fetchall()]
+                log_history(row_count=len(rows), is_select=True, success=True)
                 return jsonify(success=True, rows=rows, is_select=True)
             affected = cursor.rowcount
             conn.commit()
+            log_history(row_count=affected, is_select=False, success=True)
             return jsonify(success=True, affected_rows=affected, is_select=False)
     except Exception as error:
+        log_history(success=False, error=error)
         return api_error(error)

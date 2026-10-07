@@ -4,6 +4,7 @@ import os
 import re
 import subprocess
 import tempfile
+import time
 from flask import (
     Blueprint, Response, after_this_request, jsonify, redirect,
     render_template, request, send_file, url_for
@@ -18,6 +19,7 @@ from services.profiles import (
     check_dbs_accessibility,
     get_profiles_data
 )
+from services.query_history import record_query
 
 databases_bp = Blueprint('databases', __name__)
 
@@ -369,6 +371,13 @@ def execute_sql(profile_name):
     query = (data.get('query') or '').strip()
     if not query:
         return api_error('Query is required', 400)
+    original_query = query
+    started = time.perf_counter()
+
+    def log_history(**kwargs):
+        record_query('server', profile_name, dbname, original_query, db_label=dbname or '',
+                     duration_ms=int((time.perf_counter() - started) * 1000), **kwargs)
+
     try:
         adapter = get_adapter(profile_name)
 
@@ -380,6 +389,7 @@ def execute_sql(profile_name):
             if not remaining_query:
                 with adapter.connect(dbname):
                     pass
+                log_history(row_count=0, is_select=False, success=True)
                 return jsonify(success=True, affected_rows=0, is_select=False, dbname=dbname,
                                message=f'Database changed to {dbname}')
             query = remaining_query
@@ -399,11 +409,14 @@ def execute_sql(profile_name):
             cursor.execute(query)
             if cursor.description:
                 rows = cursor.fetchall()
+                log_history(row_count=len(rows), is_select=True, success=True)
                 return jsonify(success=True, rows=rows, is_select=True, dbname=dbname)
             affected = cursor.rowcount
             conn.commit()
+            log_history(row_count=affected, is_select=False, success=True)
             return jsonify(success=True, affected_rows=affected, is_select=False, dbname=dbname)
     except Exception as error:
+        log_history(success=False, error=error)
         return api_error(error)
 
 

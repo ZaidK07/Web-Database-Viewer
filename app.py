@@ -11,7 +11,9 @@ from flask_cors import CORS
 from routes.profiles import profiles_bp
 from routes.databases import databases_bp
 from routes.sqlite_viewer import sqlite_bp
+from routes.history import history_bp
 from services.profiles import init_profiles_db
+from services.query_history import init_history_table
 
 load_dotenv()
 app = Flask(__name__)
@@ -42,6 +44,7 @@ app.json = DatabaseJSONProvider(app)
 
 # Ensure database tables initialized
 init_profiles_db()
+init_history_table()
 
 
 @app.context_processor
@@ -53,6 +56,7 @@ def inject_profile_context():
 app.register_blueprint(profiles_bp)
 app.register_blueprint(databases_bp)
 app.register_blueprint(sqlite_bp)
+app.register_blueprint(history_bp)
 
 
 if __name__ == '__main__':

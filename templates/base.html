@@ -18,6 +18,16 @@
     <script src="/static/vendor/tailwindcss.js"></script>
     <script src="/static/vendor/vue.global.js"></script>
     <script src="/static/js/viewer-utils.js"></script>
+    <link rel="stylesheet" href="/static/vendor/codemirror/codemirror.css">
+    <link rel="stylesheet" href="/static/vendor/codemirror/show-hint.css">
+    <link rel="stylesheet" href="/static/css/sql-editor.css">
+    <script src="/static/vendor/codemirror/codemirror.js"></script>
+    <script src="/static/vendor/codemirror/sql.js"></script>
+    <script src="/static/vendor/codemirror/show-hint.js"></script>
+    <script src="/static/vendor/codemirror/matchbrackets.js"></script>
+    <script src="/static/vendor/codemirror/closebrackets.js"></script>
+    <script src="/static/vendor/codemirror/placeholder.js"></script>
+    <script src="/static/js/sql-editor.js"></script>
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -154,6 +164,16 @@
                             </span>
                         </div>
                         <div class="flex items-center gap-2 shrink-0">
+                            <!-- History Pop-up Trigger -->
+                            <button type="button" @click="openHistoryModal"
+                                    class="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700/80 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs"
+                                    title="Query History (Cmd/Ctrl+H)">
+                                <i class="ph-bold ph-clock-counter-clockwise text-sm text-brand-500"></i>
+                                <span class="hidden sm:inline">History</span>
+                                <span v-if="historyItems.length > 0" class="px-1.5 py-0.2 text-[10px] rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-mono">
+                                    {% raw %}{{ historyItems.length }}{% endraw %}
+                                </span>
+                            </button>
                             <!-- Dock Position Switcher -->
                             <div class="flex items-center p-0.5 rounded-lg bg-slate-200/80 dark:bg-slate-800 border border-slate-300/60 dark:border-slate-700/60 text-xs" title="Console Dock Position">
                                 <button type="button" @click="setSqlPosition('right')"
@@ -178,33 +198,90 @@
                         </div>
                     </div>
 
-                    <!-- Panel Body -->
+                    <!-- Panel Body: Editor + Results Workbench -->
                     <div class="flex-1 overflow-hidden p-4"
                          :class="sqlPosition === 'bottom' ? 'flex flex-col md:flex-row gap-4' : 'flex flex-col gap-3'">
                         <!-- Left / Top: Query Input Section -->
                         <div class="flex flex-col gap-3 min-h-0"
                              :class="sqlPosition === 'bottom' ? 'w-full md:w-[420px] lg:w-[460px] shrink-0' : 'flex-1'">
-                            <div>
-                                <label class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1 block">Database</label>
-                                <select v-model="sqlDb" class="w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500">
-                                    <option value="">-- Select Database --</option>
-                                    <option v-for="db in dbList" :key="db.id || db.name" :value="db.id || db.name">{% raw %}{{ db.original_name || db.name }}{% endraw %}</option>
-                                </select>
-                            </div>
-                            <div class="flex-1 flex flex-col min-h-0">
-                                <div class="flex items-center justify-between mb-1">
-                                    <label class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Query</label>
-                                    <span class="text-[10px] text-slate-400">Ctrl+Enter to run</span>
+                            
+                            <!-- Full Proper Database Selector (Never crops or clips) -->
+                            <div class="relative">
+                                <div class="flex items-center justify-between mb-1.5">
+                                    <label class="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                                        <i class="ph-bold ph-database text-brand-500"></i> Database
+                                    </label>
+                                    <span v-if="sqlSchemaInfo" class="text-[10px] font-medium px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-900/40 flex items-center gap-1">
+                                        <i class="ph-bold ph-lightning text-[9px]"></i> {% raw %}{{ sqlSchemaInfo }}{% endraw %}
+                                    </span>
                                 </div>
-                                <textarea v-model="sqlQuery"
-                                          @keydown.ctrl.enter.prevent="executeSql"
-                                          @keydown.meta.enter.prevent="executeSql"
-                                          placeholder="SELECT * FROM table_name LIMIT 50;"
-                                          class="flex-1 w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-slate-200 rounded-lg p-3 text-sm font-mono focus:outline-none focus:border-brand-500 resize-none min-h-[90px]"></textarea>
+
+                                <div class="relative flex items-center group">
+                                    <div class="absolute left-3.5 pointer-events-none flex items-center text-brand-500 text-sm">
+                                        <i class="ph-bold ph-database"></i>
+                                    </div>
+                                    <select v-model="sqlDb"
+                                            class="w-full h-10 pl-9 pr-14 appearance-none rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-bold text-xs focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 transition-all shadow-xs cursor-pointer hover:border-slate-300 dark:hover:border-slate-600">
+                                        <option v-if="!dbList.length" value="" disabled>No databases available</option>
+                                        <option v-for="db in dbList" :key="db.id || db.name" :value="db.id || db.name" class="py-1.5 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100">
+                                            {% raw %}{{ db.original_name || db.name }}{% endraw %}
+                                        </option>
+                                    </select>
+                                    <div class="absolute right-3 pointer-events-none flex items-center gap-1.5 text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-300 transition-colors">
+                                        <span v-if="dbList.length > 1" class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400">
+                                            {% raw %}{{ dbList.length }}{% endraw %}
+                                        </span>
+                                        <i class="ph-bold ph-caret-down text-xs"></i>
+                                    </div>
+                                </div>
                             </div>
+
+                            <!-- Live SQL Linter Diagnostics Banner -->
+                            <div v-if="sqlDiagnostics && sqlDiagnostics.length > 0"
+                                 class="px-2.5 py-1.5 rounded-lg border text-xs flex items-center justify-between gap-2 shrink-0 transition-all animate-in fade-in slide-in-from-top-1 duration-150"
+                                 :class="topDiagnostic.severity === 'error'
+                                     ? 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-900/60 text-red-700 dark:text-red-300'
+                                     : 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-900/60 text-amber-800 dark:text-amber-300'">
+                                <div class="flex items-center gap-1.5 min-w-0 flex-1">
+                                    <i class="ph-bold text-sm shrink-0"
+                                       :class="topDiagnostic.severity === 'error' ? 'ph-x-circle text-red-500' : 'ph-warning-circle text-amber-500'"></i>
+                                    <span class="font-mono text-[10px] font-bold px-1 py-0.2 rounded bg-white/70 dark:bg-slate-800/70 border border-slate-200/60 dark:border-slate-700/60 shrink-0">
+                                        Line {% raw %}{{ topDiagnostic.from.line + 1 }}{% endraw %}
+                                    </span>
+                                    <span class="truncate text-[11px] font-medium" :title="topDiagnostic.message">
+                                        {% raw %}{{ topDiagnostic.message }}{% endraw %}
+                                    </span>
+                                </div>
+                                <div class="flex items-center gap-1.5 shrink-0">
+                                    <button v-if="topDiagnostic.quickFix"
+                                            type="button"
+                                            @click="applySqlQuickFix(topDiagnostic.quickFix)"
+                                            class="px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 border text-xs font-semibold shadow-2xs hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-1 shrink-0"
+                                            :class="topDiagnostic.severity === 'error' ? 'border-red-300 dark:border-red-800 text-red-700 dark:text-red-300' : 'border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300'">
+                                        <i class="ph-bold ph-magic-wand text-xs"></i>
+                                        <span>Fix: {% raw %}{{ topDiagnostic.quickFix.label }}{% endraw %}</span>
+                                    </button>
+                                    <span v-if="sqlDiagnostics.length > 1" class="text-[10px] opacity-75 font-semibold">
+                                        +{% raw %}{{ sqlDiagnostics.length - 1 }}{% endraw %}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <!-- CodeMirror Editor Container -->
+                            <div class="flex-1 flex flex-col min-h-0">
+                                <div class="flex items-center justify-between mb-1 gap-2 shrink-0">
+                                    <label class="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Query</label>
+                                    <span class="text-[10px] text-slate-400 truncate" title="Ctrl/Cmd+Enter: run query · Ctrl+Space: autocomplete">Ctrl+Enter run · Ctrl+Space suggest</span>
+                                </div>
+                                <div class="wdv-sql-editor relative flex-1 min-h-[110px] w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-xl overflow-hidden focus-within:border-brand-500 shadow-2xs">
+                                    <div ref="sqlEditorEl" class="absolute inset-0"></div>
+                                </div>
+                            </div>
+
+                            <!-- Execute Button -->
                             <button @click="executeSql" :disabled="!sqlQuery || sqlLoading" class="w-full py-2 bg-brand-600 text-white rounded-lg font-medium hover:bg-brand-700 disabled:opacity-50 flex justify-center items-center gap-2 text-sm shadow-sm transition-colors shrink-0">
                                 <i v-if="sqlLoading" class="ph-bold ph-spinner animate-spin"></i>
-                                <span v-else class="flex items-center gap-1.5"><i class="ph-bold ph-play"></i> Execute Query</span>
+                                <span v-else class="flex items-center gap-1.5"><i class="ph-bold ph-play"></i> {% raw %}{{ sqlHasSelection ? 'Execute Selection' : 'Execute Query' }}{% endraw %}</span>
                             </button>
                         </div>
 
@@ -260,7 +337,99 @@
                 </div>
             </div>
         </main>
+{% raw %}
+        <!-- History Pop-up Modal -->
+        <div v-if="showHistoryModal" class="fixed inset-0 z-[250] flex items-start justify-center pt-[8vh] p-4">
+            <div class="absolute inset-0 bg-slate-900/40 dark:bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-150" @click="showHistoryModal = false"></div>
+            <div class="relative w-full max-w-2xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-150 max-h-[82vh]">
+                <!-- Modal Header -->
+                <div class="p-3 border-b border-slate-100 dark:border-slate-800 flex items-center gap-2 bg-slate-50/80 dark:bg-slate-800/40 shrink-0">
+                    <div class="relative flex-1 min-w-0">
+                        <i class="ph-bold ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                        <input ref="historySearchInput"
+                               v-model="historySearch"
+                               type="text"
+                               placeholder="Search query history... (Click any item to load)"
+                               @keydown.esc="showHistoryModal = false"
+                               class="w-full h-9 pl-9 pr-8 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500" />
+                        <button v-if="historySearch" @click="historySearch = ''" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs p-1">
+                            <i class="ph ph-x"></i>
+                        </button>
+                    </div>
+                    <button type="button" @click="historyStarredOnly = !historyStarredOnly"
+                            :class="historyStarredOnly ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 text-amber-600 dark:text-amber-400 font-semibold' : 'border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 bg-white dark:bg-slate-800'"
+                            class="h-9 px-2.5 rounded-xl border text-xs flex items-center gap-1.5 transition-colors shrink-0 shadow-xs" title="Filter starred only">
+                        <i class="text-sm" :class="historyStarredOnly ? 'ph-fill ph-star' : 'ph-bold ph-star'"></i>
+                        <span class="hidden sm:inline">Starred</span>
+                    </button>
+                    <button type="button" @click="historyCurrentDbOnly = !historyCurrentDbOnly" :disabled="!sqlDb"
+                            :class="historyCurrentDbOnly && sqlDb ? 'bg-brand-50 dark:bg-brand-950/40 border-brand-300 dark:border-brand-800 text-brand-600 dark:text-brand-400 font-semibold' : 'border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 bg-white dark:bg-slate-800'"
+                            class="h-9 px-2.5 rounded-xl border text-xs flex items-center gap-1.5 transition-colors shrink-0 disabled:opacity-40 shadow-xs" title="Only show queries for the selected database">
+                        <i class="ph-bold ph-database text-sm"></i>
+                        <span class="hidden sm:inline">This DB</span>
+                    </button>
+                    <button type="button" @click="clearHistory" :disabled="!historyItems.length"
+                            class="h-9 px-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-500 hover:text-red-600 hover:border-red-300 dark:hover:border-red-800 transition-colors shrink-0 disabled:opacity-40 shadow-xs" title="Clear non-starred history">
+                        <i class="ph-bold ph-trash text-sm"></i>
+                    </button>
+                    <button type="button" @click="showHistoryModal = false" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" title="Close (Esc)">
+                        <i class="ph-bold ph-x text-base"></i>
+                    </button>
+                </div>
 
+                <!-- Modal List Body -->
+                <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
+                    <div v-if="historyLoading && !historyItems.length" class="p-8 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+                        <i class="ph-bold ph-spinner animate-spin text-base"></i> Loading history...
+                    </div>
+                    <div v-else-if="!historyItems.length" class="p-10 text-center text-slate-400 dark:text-slate-500">
+                        <i class="ph-duotone ph-clock-counter-clockwise text-3xl mb-2 block text-slate-300 dark:text-slate-600"></i>
+                        <div class="text-sm font-semibold text-slate-600 dark:text-slate-300">
+                            {{ historySearch || historyStarredOnly ? 'No matching queries' : 'No query history yet' }}
+                        </div>
+                        <div class="text-xs mt-1 text-slate-400">Queries you run in the console will automatically appear here.</div>
+                    </div>
+
+                    <!-- History Items (1-Click Auto-Fill) -->
+                    <div v-for="item in historyItems" :key="item.id"
+                         @click="selectHistoryItem(item)"
+                         class="group relative rounded-xl border border-slate-200/80 dark:border-slate-700/80 bg-white dark:bg-slate-800/60 hover:bg-brand-50/40 dark:hover:bg-brand-950/20 hover:border-brand-400 dark:hover:border-brand-500 hover:shadow-md cursor-pointer p-3 transition-all select-none"
+                         title="Tap to auto-fill query in editor">
+                        <div class="flex items-start justify-between gap-3 mb-1.5">
+                            <pre class="text-xs leading-relaxed font-mono whitespace-pre-wrap break-words line-clamp-3 text-slate-800 dark:text-slate-100 flex-1">{{ item.query }}</pre>
+                            <button type="button" @click.stop="toggleHistoryStar(item)"
+                                    class="p-1 rounded-md transition-all shrink-0"
+                                    :class="item.starred ? 'text-amber-500' : 'text-slate-300 dark:text-slate-600 opacity-0 group-hover:opacity-100 hover:text-amber-500'"
+                                    :title="item.starred ? 'Unstar' : 'Star query'">
+                                <i class="text-base" :class="item.starred ? 'ph-fill ph-star' : 'ph-bold ph-star'"></i>
+                            </button>
+                        </div>
+                        <div class="mt-1.5 flex items-center gap-2 text-[10px] text-slate-400 dark:text-slate-500 min-w-0">
+                            <span class="w-1.5 h-1.5 rounded-full shrink-0" :class="item.success ? 'bg-emerald-500' : 'bg-red-500'"></span>
+                            <span v-if="item.db_label" class="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700/60 font-semibold text-slate-600 dark:text-slate-300 truncate max-w-[120px]" :title="item.db_label">{{ item.db_label }}</span>
+                            <span class="shrink-0" :title="new Date(item.executed_at * 1000).toLocaleString()">{{ timeAgo(item.executed_at) }}</span>
+                            <span v-if="item.duration_ms !== null" class="shrink-0">{{ item.duration_ms }}ms</span>
+                            <span v-if="item.success && item.row_count !== null && item.row_count >= 0" class="shrink-0">{{ item.row_count }} {{ item.is_select ? (item.row_count === 1 ? 'row' : 'rows') : 'affected' }}</span>
+                            <span v-if="!item.success" class="text-red-500 dark:text-red-400 truncate min-w-0" :title="item.error">{{ item.error || 'error' }}</span>
+                            <span v-if="item.run_count > 1" class="shrink-0 font-semibold text-brand-600 dark:text-brand-400">×{{ item.run_count }}</span>
+
+                            <div class="ml-auto flex items-center gap-1 shrink-0">
+                                <span class="text-[10px] text-brand-600 dark:text-brand-400 font-semibold opacity-0 group-hover:opacity-100 transition-opacity mr-1">
+                                    Click to fill &rarr;
+                                </span>
+                                <button type="button" @click.stop="copyHistoryItem(item)" class="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" title="Copy query">
+                                    <i class="ph-bold ph-copy text-xs"></i>
+                                </button>
+                                <button type="button" @click.stop="deleteHistoryItem(item)" class="p-1 rounded hover:bg-red-50 dark:hover:bg-red-950/40 text-slate-400 hover:text-red-600" title="Delete entry">
+                                    <i class="ph-bold ph-x text-xs"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+{% endraw %}
 
         <!-- Command+K Global Modal -->
         <div v-if="showCmdK" class="fixed inset-0 z-50 flex items-start justify-center pt-[15vh]">
@@ -694,11 +863,54 @@
                 window.addEventListener('mouseup', onUp);
             };
             const sqlDb = ref(localStorage.getItem('last_sql_db') || '');
+
+            // Custom minimal database selector state
+            const showSqlDbDropdown = ref(false);
+            const sqlDbSearch = ref('');
+            const sqlDbSearchInput = ref(null);
+
+            const filteredSqlDbList = computed(() => {
+                const list = dbList.value || [];
+                if (!sqlDbSearch.value.trim()) return list;
+                const query = sqlDbSearch.value.toLowerCase().trim();
+                return list.filter(db => {
+                    const name = ((db && (db.original_name || db.name)) || (typeof db === 'string' ? db : '')).toLowerCase();
+                    return name.includes(query);
+                });
+            });
+
+            const getDbDisplayName = (dbVal) => {
+                if (!dbVal) return '';
+                const item = (dbList.value || []).find(d => (d && (d.id || d.name)) === dbVal || d === dbVal);
+                if (item) return item.original_name || item.name || item;
+                return dbVal;
+            };
+
+            const selectSqlDb = (dbVal) => {
+                sqlDb.value = dbVal;
+                showSqlDbDropdown.value = false;
+                sqlDbSearch.value = '';
+            };
+
+            watch(showSqlDbDropdown, (isOpen) => {
+                if (isOpen && (dbList.value || []).length > 4) {
+                    setTimeout(() => {
+                        if (sqlDbSearchInput.value) sqlDbSearchInput.value.focus();
+                    }, 50);
+                }
+            });
+
             watch(sqlDb, (newDb) => {
                 if (newDb) {
                     try {
                         localStorage.setItem('last_sql_db', newDb);
                     } catch (e) {}
+                }
+                sqlError.value = '';
+                loadEditorSchema();
+                fetchRecallHistory();
+                if (sqlTab.value === 'history' && historyCurrentDbOnly.value) {
+                    fetchHistory();
                 }
             });
             const sqlQuery = ref('');
@@ -712,6 +924,221 @@
 
             const dbList = ref([]);
             const currentTable = ref(null);
+
+            // ---------- SQL editor (CodeMirror) + query history ----------
+            const isSqliteMode = () => window.location.pathname.startsWith('/sqlite');
+            const sqlTab = ref('editor');
+            const sqlEditorEl = ref(null);
+            const sqlSchemaInfo = ref('');
+            const sqlHasSelection = ref(false);
+            let sqlEditor = null;
+            const schemaCache = {};
+
+            const historyItems = ref([]);
+            const historyLoading = ref(false);
+            const historySearch = ref('');
+            const historyStarredOnly = ref(false);
+            const historyCurrentDbOnly = ref(localStorage.getItem('sql_history_db_only') === '1');
+            watch(historyCurrentDbOnly, (v) => {
+                try { localStorage.setItem('sql_history_db_only', v ? '1' : '0'); } catch (e) {}
+            });
+
+            const historyScope = (dbOnly) => {
+                const params = new URLSearchParams();
+                if (isSqliteMode()) {
+                    params.set('source', 'sqlite');
+                } else {
+                    params.set('source', 'server');
+                    params.set('profile', window.PROFILE_NAME || '');
+                }
+                if (dbOnly && sqlDb.value) params.set('db', sqlDb.value);
+                return params;
+            };
+
+            let historyRequestId = 0;
+            const fetchHistory = async () => {
+                const params = historyScope(historyCurrentDbOnly.value);
+                if (historySearch.value.trim()) params.set('q', historySearch.value.trim());
+                if (historyStarredOnly.value) params.set('starred', '1');
+                const reqId = ++historyRequestId;
+                historyLoading.value = true;
+                try {
+                    const res = await fetch('/api/history?' + params.toString());
+                    const data = await res.json();
+                    if (reqId === historyRequestId && data.success) historyItems.value = data.history || [];
+                } catch (e) {
+                    console.error('Failed to load query history', e);
+                } finally {
+                    if (reqId === historyRequestId) historyLoading.value = false;
+                }
+            };
+
+            // Recent queries for the current DB, used for Up/Down recall in the editor
+            const fetchRecallHistory = async () => {
+                if (!sqlEditor) return;
+                try {
+                    const params = historyScope(true);
+                    params.set('limit', '100');
+                    const res = await fetch('/api/history?' + params.toString());
+                    const data = await res.json();
+                    if (data.success) sqlEditor.setHistory((data.history || []).map(h => h.query));
+                } catch (e) {}
+            };
+
+            let historySearchTimer = null;
+            watch(historySearch, () => {
+                clearTimeout(historySearchTimer);
+                historySearchTimer = setTimeout(fetchHistory, 250);
+            });
+            watch([historyStarredOnly, historyCurrentDbOnly], () => fetchHistory());
+            watch(sqlDb, () => { if (sqlTab.value === 'history' && historyCurrentDbOnly.value) fetchHistory(); });
+
+            const setSqlTab = (tab) => {
+                sqlTab.value = tab;
+                if (tab === 'history') {
+                    fetchHistory();
+                } else {
+                    Vue.nextTick(() => { if (sqlEditor) { sqlEditor.refresh(); sqlEditor.focus(); } });
+                }
+            };
+
+            const timeAgo = (ts) => {
+                const diff = Math.max(0, Date.now() / 1000 - ts);
+                if (diff < 45) return 'just now';
+                if (diff < 3600) return Math.round(diff / 60) + 'm ago';
+                if (diff < 86400) return Math.round(diff / 3600) + 'h ago';
+                if (diff < 86400 * 7) return Math.round(diff / 86400) + 'd ago';
+                return new Date(ts * 1000).toLocaleDateString();
+            };
+
+            const toggleHistoryStar = async (item) => {
+                const next = !item.starred;
+                item.starred = next;
+                try {
+                    const res = await fetch('/api/history/' + item.id, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ starred: next })
+                    });
+                    const data = await res.json();
+                    if (!data.success) throw new Error(data.error);
+                    if (!next && historyStarredOnly.value) {
+                        historyItems.value = historyItems.value.filter(h => h.id !== item.id);
+                    }
+                } catch (e) {
+                    item.starred = !next;
+                    showToast('Failed to update star', 'error');
+                }
+            };
+
+            const deleteHistoryItem = async (item) => {
+                try {
+                    const res = await fetch('/api/history/' + item.id, { method: 'DELETE' });
+                    const data = await res.json();
+                    if (!data.success) throw new Error(data.error);
+                    historyItems.value = historyItems.value.filter(h => h.id !== item.id);
+                    fetchRecallHistory();
+                } catch (e) {
+                    showToast('Failed to delete history entry', 'error');
+                }
+            };
+
+            const clearHistory = async () => {
+                const scopeLabel = historyCurrentDbOnly.value && sqlDb.value ? 'this database' : 'this ' + (isSqliteMode() ? 'SQLite viewer' : 'profile');
+                const confirmed = await customConfirm(
+                    'Clear Query History',
+                    `Remove all non-starred queries for ${scopeLabel}? Starred queries are kept.`,
+                    true
+                );
+                if (!confirmed) return;
+                try {
+                    const params = historyScope(historyCurrentDbOnly.value);
+                    const res = await fetch('/api/history?' + params.toString(), { method: 'DELETE' });
+                    const data = await res.json();
+                    if (!data.success) throw new Error(data.error);
+                    showToast(`Cleared ${data.removed} quer${data.removed === 1 ? 'y' : 'ies'}`);
+                    fetchHistory();
+                    fetchRecallHistory();
+                } catch (e) {
+                    showToast('Failed to clear history', 'error');
+                }
+            };
+
+            const copyHistoryItem = async (item) => {
+                try {
+                    await navigator.clipboard.writeText(item.query);
+                    showToast('Query copied');
+                } catch (e) {
+                    showToast('Copy failed', 'error');
+                }
+            };
+
+            const loadHistoryItem = (item, run = false) => {
+                if (item.dbname && item.dbname !== sqlDb.value) {
+                    const known = dbList.value.some(d => (d.id || d.name) === item.dbname);
+                    if (known || !isSqliteMode()) sqlDb.value = item.dbname;
+                }
+                sqlQuery.value = item.query;
+                setSqlTab('editor');
+                if (run) Vue.nextTick(() => executeSql());
+            };
+
+            const showHistoryModal = ref(false);
+            const historySearchInput = ref(null);
+
+            const openHistoryModal = () => {
+                showHistoryModal.value = true;
+                fetchHistory();
+                setTimeout(() => {
+                    if (historySearchInput.value) historySearchInput.value.focus();
+                }, 60);
+            };
+
+            const selectHistoryItem = (item) => {
+                loadHistoryItem(item, false);
+                showHistoryModal.value = false;
+                Vue.nextTick(() => {
+                    if (sqlEditor) {
+                        sqlEditor.refresh();
+                        sqlEditor.focus();
+                    }
+                });
+            };
+
+            const loadEditorSchema = async () => {
+                const db = sqlDb.value;
+                if (!db) {
+                    if (sqlEditor) sqlEditor.setSchema({}, []);
+                    sqlSchemaInfo.value = '';
+                    return;
+                }
+                const sqlite = isSqliteMode();
+                const key = (sqlite ? 'sqlite:' : 'server:') + db;
+                const apiBase = window.API_BASE || (activeProfile.value ? `/api/p/${encodeURIComponent(activeProfile.value)}` : '');
+                if (!schemaCache[key]) {
+                    const url = sqlite
+                        ? `/api/sqlite/${encodeURIComponent(db)}/schema`
+                        : (apiBase ? `${apiBase}/db/${encodeURIComponent(db)}/schema` : null);
+                    if (!url) return;
+                    schemaCache[key] = fetch(url).then(r => r.json()).then(d => (d && d.success ? d : null)).catch(() => null);
+                }
+                const data = await schemaCache[key];
+                if (db !== sqlDb.value) return; // DB switched while loading
+                if (!data) {
+                    delete schemaCache[key];
+                    if (sqlEditor) sqlEditor.setSchema({}, []);
+                    sqlSchemaInfo.value = '';
+                    return;
+                }
+                if (sqlEditor) sqlEditor.setSchema(data.schema || {}, data.views || []);
+                const n = Object.keys(data.schema || {}).length;
+                sqlSchemaInfo.value = n ? `${n} table${n === 1 ? '' : 's'}` : '';
+            };
+
+            const invalidateEditorSchema = () => {
+                const key = (isSqliteMode() ? 'sqlite:' : 'server:') + sqlDb.value;
+                delete schemaCache[key];
+            };
 
             const toast = ref({ show: false, message: '', type: 'success' });
 
@@ -949,9 +1376,23 @@
                         cmdKIndex.value = 0;
                         setTimeout(() => { if(cmdKInput.value) cmdKInput.value.focus(); }, 50);
                     }
+                    if ((e.metaKey || e.ctrlKey) && (e.key === 'h' || e.key === 'H') && !e.shiftKey && !e.altKey) {
+                        if (showSqlPanel.value) {
+                            e.preventDefault();
+                            if (showHistoryModal.value) {
+                                showHistoryModal.value = false;
+                            } else {
+                                openHistoryModal();
+                            }
+                        }
+                    }
                     if (e.key === 'Escape') {
                         if (showCmdK.value) {
                             showCmdK.value = false;
+                        } else if (showHistoryModal.value) {
+                            showHistoryModal.value = false;
+                        } else if (showSqlDbDropdown.value) {
+                            showSqlDbDropdown.value = false;
                         } else if (showSqlPanel.value) {
                             showSqlPanel.value = false;
                         }
@@ -979,11 +1420,73 @@
                 else window.location.href = url;
             };
 
+            const currentEngine = computed(() => {
+                if (isSqliteMode()) return 'sqlite';
+                const p = profiles.value.find(x => x.name === (activeProfile.value || window.PROFILE_NAME));
+                return p ? (p.engine || 'mysql') : 'mysql';
+            });
+
+            const sqlDiagnostics = ref([]);
+            const topDiagnostic = computed(() => (sqlDiagnostics.value && sqlDiagnostics.value.length > 0 ? sqlDiagnostics.value[0] : null));
+
+            const applySqlQuickFix = (fix) => {
+                if (sqlEditor && sqlEditor.applyQuickFix) {
+                    sqlEditor.applyQuickFix(fix);
+                }
+            };
+
+            const initSqlEditor = () => {
+                if (sqlEditor || !sqlEditorEl.value || !window.SqlEditor) return;
+                sqlEditor = window.SqlEditor.create(sqlEditorEl.value, {
+                    value: sqlQuery.value,
+                    dialect: currentEngine.value,
+                    placeholder: 'SELECT * FROM table_name LIMIT 50;',
+                    onChange: (val) => {
+                        sqlQuery.value = val;
+                    },
+                    onDiagnostics: (diags) => {
+                        sqlDiagnostics.value = diags || [];
+                    },
+                    onRun: () => {
+                        executeSql();
+                    }
+                });
+                sqlEditor.cm.on('cursorActivity', () => {
+                    sqlHasSelection.value = !!(sqlEditor && sqlEditor.getSelection().trim());
+                });
+                sqlEditor.setDialect(currentEngine.value);
+                if (currentTable.value) sqlEditor.setDefaultTable(currentTable.value);
+                loadEditorSchema();
+                fetchRecallHistory();
+            };
+
+            watch(sqlQuery, (val) => {
+                if (sqlEditor && sqlEditor.getValue() !== (val || '')) {
+                    sqlEditor.setValue(val || '');
+                }
+            });
+
+            watch(currentEngine, (eng) => {
+                if (sqlEditor) sqlEditor.setDialect(eng);
+            });
+
+            watch(currentTable, (tbl) => {
+                if (sqlEditor) sqlEditor.setDefaultTable(tbl);
+            });
+
+            watch([sqlPosition, sqlPanelWidth, sqlPanelHeight], () => {
+                if (sqlEditor) {
+                    Vue.nextTick(() => sqlEditor.refresh());
+                }
+            });
+
             const executeSql = async () => {
-                if(!sqlQuery.value) return;
+                const selection = sqlEditor ? sqlEditor.getSelection().trim() : '';
+                const queryToRun = (selection || sqlQuery.value || '').trim();
+                if (!queryToRun) return;
 
                 // Auto-detect USE statement if query declares database
-                const useMatch = sqlQuery.value.match(/^\s*USE\s+[`"]?([a-zA-Z0-9_$]+)[`"]?/i);
+                const useMatch = queryToRun.match(/^\s*USE\s+[`"]?([a-zA-Z0-9_$]+)[`"]?/i);
                 if (useMatch) {
                     sqlDb.value = useMatch[1];
                 } else if (!sqlDb.value && !window.location.pathname.startsWith('/sqlite')) {
@@ -1002,7 +1505,7 @@
                 try {
                     const isSqlite = window.location.pathname.startsWith('/sqlite');
                     const url = isSqlite ? `/api/sqlite/${encodeURIComponent(sqlDb.value)}/sql` : (window.API_BASE + '/sql');
-                    const body = isSqlite ? { query: sqlQuery.value } : { dbname: sqlDb.value, query: sqlQuery.value };
+                    const body = isSqlite ? { query: queryToRun } : { dbname: sqlDb.value, query: queryToRun };
 
                     const res = await fetch(url, {
                         method: 'POST',
@@ -1027,12 +1530,20 @@
                                 dbList.value.push({ name: data.dbname });
                             }
                         }
+
+                        // Invalidate autocomplete schema cache if DDL was run
+                        if (/^\s*(CREATE|ALTER|DROP|TRUNCATE)\b/i.test(queryToRun)) {
+                            invalidateEditorSchema();
+                            loadEditorSchema();
+                        }
                     }
                 } catch(e) {
                     sqlError.value = "Network error: " + (e.message || e);
                 } finally {
                     sqlLoading.value = false;
                     sqlResultTime.value = Math.round(performance.now() - start);
+                    fetchRecallHistory();
+                    if (sqlTab.value === 'history') fetchHistory();
                 }
             };
 
@@ -1087,17 +1598,36 @@
                             sqlDb.value = dbList.value[0].name || dbList.value[0].id || '';
                         }
                     }
+                    Vue.nextTick(() => {
+                        initSqlEditor();
+                        if (sqlEditor) {
+                            sqlEditor.refresh();
+                            if (sqlTab.value === 'editor') sqlEditor.focus();
+                        }
+                        loadEditorSchema();
+                        fetchRecallHistory();
+                    });
                 }
             });
 
             onMounted(() => {
                 fetchProfiles();
                 fetchDbList();
+                Vue.nextTick(() => {
+                    initSqlEditor();
+                });
             });
 
             return {
                 isDark, toggleDarkMode, showFeaturesModal, isOnDashboard,
                 showSqlPanel, sqlPosition, setSqlPosition, sqlPanelWidth, sqlPanelHeight, isResizingSql, startSqlResizeRight, startSqlResizeBottom, sqlDb, sqlQuery, sqlLoading, sqlError, sqlSuccess, sqlRows, sqlIsSelect, sqlAffected, sqlResultTime, dbList, currentTable, executeSql,
+                sqlTab, setSqlTab, sqlEditorEl, sqlSchemaInfo, sqlHasSelection,
+                sqlDiagnostics, topDiagnostic, applySqlQuickFix,
+                showSqlDbDropdown, sqlDbSearch, sqlDbSearchInput, filteredSqlDbList, getDbDisplayName, selectSqlDb,
+                showHistoryModal, historySearchInput, openHistoryModal, selectHistoryItem,
+                historyItems, historyLoading, historySearch, historyStarredOnly, historyCurrentDbOnly,
+                fetchHistory, toggleHistoryStar, deleteHistoryItem, clearHistory, copyHistoryItem, loadHistoryItem, timeAgo,
+                loadEditorSchema, invalidateEditorSchema,
                 showCmdK, cmdKSearch, cmdKIndex, cmdKInput, cmdKList, filteredCmdKDbList, cmdKNav, cmdKExecute,
                 toast, showToast, goTo, setCustomNavigator,
                 profiles, activeProfile, showProfileModal, showProfileDropdown, showEngineDropdown, setEngine, newProfile, isEditingProfile, editingProfileOriginalName, fetchProfiles, switchProfile, handleProfileSwitch, handleEngineChange, createProfile, updateProfile, deleteProfile, startEditProfile, cancelEditProfile,
