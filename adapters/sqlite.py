@@ -178,3 +178,26 @@ class SQLiteAdapter:
     @staticmethod
     def inserted_id(cursor, primary_keys):
         return cursor.lastrowid
+
+    def dump_stream(self, database=None):
+        conn = sqlite3.connect(self.file_path, timeout=15)
+        conn.execute('PRAGMA busy_timeout = 5000')
+
+        def generate():
+            try:
+                buffer = []
+                buf_len = 0
+                for line in conn.iterdump():
+                    buffer.append(line)
+                    buffer.append('\n')
+                    buf_len += len(line) + 1
+                    if buf_len >= 64 * 1024:
+                        yield "".join(buffer).encode('utf-8')
+                        buffer = []
+                        buf_len = 0
+                if buffer:
+                    yield "".join(buffer).encode('utf-8')
+            finally:
+                conn.close()
+
+        return generate()

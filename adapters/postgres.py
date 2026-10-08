@@ -257,6 +257,60 @@ class PostgreSQLAdapter:
             env['PGSSLMODE'] = self.profile['sslmode']
         return env
 
+    def dump_stream(self, database):
+        cmd = ['pg_dump', '-h', self.profile['host'], '-p', str(self.profile['port']),
+               '-U', self.profile['user'], '--no-owner', '--no-privileges', database]
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=self._cli_env(),
+            bufsize=64 * 1024
+        )
+
+        first_chunk = proc.stdout.read(64 * 1024)
+        if not first_chunk:
+            proc.wait()
+            if proc.returncode != 0:
+                err = proc.stderr.read().decode('utf-8', errors='replace').strip()
+                raise RuntimeError(f"pg_dump failed: {err}")
+
+        def generate():
+            try:
+                if first_chunk:
+                    yield first_chunk
+                while True:
+                    chunk = proc.stdout.read(64 * 1024)
+                    if not chunk:
+                        break
+                    yield chunk
+
+                proc.stdout.close()
+                proc.wait()
+                if proc.returncode != 0:
+                    err = proc.stderr.read().decode('utf-8', errors='replace').strip()
+                    yield f"\n\n-- ERROR: pg_dump exited with error code {proc.returncode}:\n-- {err}\n".encode('utf-8')
+            except GeneratorExit:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                raise
+            finally:
+                try:
+                    proc.stdout.close()
+                except Exception:
+                    pass
+                try:
+                    proc.stderr.close()
+                except Exception:
+                    pass
+                if proc.poll() is None:
+                    proc.terminate()
+
+        return generate()
+
     def dump_command(self, database, path):
         cmd = ['pg_dump', '-h', self.profile['host'], '-p', str(self.profile['port']),
                '-U', self.profile['user'], '--no-owner', '--no-privileges', database]

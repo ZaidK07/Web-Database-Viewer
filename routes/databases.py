@@ -329,27 +329,18 @@ def export_table_csv(profile_name, dbname, tablename):
 def export_db(profile_name, dbname):
     if dbname not in get_db_list(profile_name):
         return api_error('Database not found in list', 404)
-    path = None
     try:
-        fd, path = tempfile.mkstemp(suffix='.sql')
-        os.close(fd)
-        get_adapter(profile_name).dump_command(dbname, path)
+        adapter = get_adapter(profile_name)
+        stream_gen = adapter.dump_stream(dbname)
 
-        @after_this_request
-        def cleanup(response):
-            try:
-                os.remove(path)
-            except OSError:
-                pass
-            return response
-
-        return send_file(path, as_attachment=True, download_name=f'{dbname}_export.sql',
-                         mimetype='application/sql')
-    except subprocess.CalledProcessError as error:
-        if path:
-            try: os.remove(path)
-            except OSError: pass
-        return api_error(f'Export failed: {error.stderr.decode("utf-8", errors="replace")}')
+        response = Response(stream_with_context(stream_gen), mimetype='application/sql')
+        response.headers['Content-Disposition'] = f'attachment; filename="{dbname}_export.sql"'
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        return response
+    except FileNotFoundError:
+        cmd_name = 'pg_dump' if get_profile(profile_name).get('engine') == 'postgresql' else 'mysqldump'
+        return api_error(f'CLI tool "{cmd_name}" is not installed or not in PATH on the server', 500)
     except Exception as error:
         return api_error(error)
 

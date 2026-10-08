@@ -295,6 +295,24 @@ def download_sqlite_file(file_id):
                      mimetype='application/x-sqlite3')
 
 
+@sqlite_bp.route('/api/sqlite/<file_id>/export/sql')
+def export_sqlite_sql(file_id):
+    file_info = get_uploaded_sqlite_file(file_id)
+    if not file_info or not file_info['exists']:
+        return api_error('File not found on disk', 404)
+    try:
+        adapter = SQLiteAdapter(file_info['file_path'])
+        stream_gen = adapter.dump_stream()
+        base_name = os.path.splitext(file_info['original_name'])[0] or 'sqlite_export'
+        response = Response(stream_with_context(stream_gen), mimetype='application/sql')
+        response.headers['Content-Disposition'] = f'attachment; filename="{base_name}.sql"'
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        return response
+    except Exception as error:
+        return api_error(error)
+
+
 @sqlite_bp.route('/api/sqlite/<file_id>/sql', methods=['POST'])
 def execute_sql(file_id):
     file_info = get_uploaded_sqlite_file(file_id)
