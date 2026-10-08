@@ -179,7 +179,69 @@ class SQLiteAdapter:
     def inserted_id(cursor, primary_keys):
         return cursor.lastrowid
 
-    def dump_stream(self, database=None):
+    def dump_table_stream(self, table):
+        conn = sqlite3.connect(self.file_path, timeout=15)
+        conn.execute('PRAGMA busy_timeout = 5000')
+
+        def generate():
+            try:
+                cursor = conn.cursor()
+                cursor.execute("SELECT sql FROM sqlite_master WHERE type IN ('table', 'view') AND name = ?", (table,))
+                row = cursor.fetchone()
+                if not row or not row[0]:
+                    raise LookupError(f"Table '{table}' not found")
+                create_sql = row[0]
+
+                buffer = [
+                    f"-- SQLite Table Dump: {table}\n",
+                    "BEGIN TRANSACTION;\n",
+                    f"DROP TABLE IF EXISTS {self.quote(table)};\n",
+                    f"{create_sql};\n"
+                ]
+                yield "".join(buffer).encode('utf-8')
+                buffer = []
+                buf_len = 0
+
+                cursor.execute(f"SELECT * FROM {self.quote(table)}")
+                cols = [desc[0] for desc in cursor.description] if cursor.description else []
+                quoted_cols = ", ".join(self.quote(c) for c in cols)
+                table_quoted = self.quote(table)
+
+                while True:
+                    batch = cursor.fetchmany(500)
+                    if not batch:
+                        break
+                    for r in batch:
+                        vals = []
+                        for v in r:
+                            if v is None:
+                                vals.append("NULL")
+                            elif isinstance(v, (int, float)):
+                                vals.append(str(v))
+                            elif isinstance(v, (bytes, bytearray)):
+                                vals.append(f"X'{v.hex()}'")
+                            else:
+                                escaped = str(v).replace("'", "''")
+                                vals.append(f"'{escaped}'")
+                        line = f"INSERT INTO {table_quoted} ({quoted_cols}) VALUES ({', '.join(vals)});\n"
+                        buffer.append(line)
+                        buf_len += len(line)
+                        if buf_len >= 64 * 1024:
+                            yield "".join(buffer).encode('utf-8')
+                            buffer = []
+                            buf_len = 0
+
+                buffer.append("COMMIT;\n")
+                yield "".join(buffer).encode('utf-8')
+            finally:
+                conn.close()
+
+        return generate()
+
+    def dump_stream(self, database=None, table=None):
+        if table:
+            return self.dump_table_stream(table)
+
         conn = sqlite3.connect(self.file_path, timeout=15)
         conn.execute('PRAGMA busy_timeout = 5000')
 
@@ -201,3 +263,21 @@ class SQLiteAdapter:
                 conn.close()
 
         return generate()
+
+    def explain_query(self, conn, query):
+        clean_query = query.strip().rstrip(';')
+        cursor = conn.cursor()
+        cursor.execute(f"EXPLAIN QUERY PLAN {clean_query}")
+        rows = cursor.fetchall()
+        steps = []
+        for r in rows:
+            if isinstance(r, (dict, sqlite3.Row)):
+                r_id = r['id'] if 'id' in r else r[0]
+                parent = r['parent'] if 'parent' in r else r[1]
+                detail = r['detail'] if 'detail' in r else r[3]
+            else:
+                r_id = r[0] if len(r) > 0 else 0
+                parent = r[1] if len(r) > 1 else 0
+                detail = r[3] if len(r) > 3 else (r[2] if len(r) > 2 else '')
+            steps.append({'id': r_id, 'parent': parent, 'detail': detail})
+        return steps

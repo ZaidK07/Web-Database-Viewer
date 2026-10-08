@@ -174,9 +174,11 @@ class MySQLAdapter:
     def inserted_id(cursor, primary_keys):
         return cursor.lastrowid
 
-    def dump_stream(self, database):
+    def dump_stream(self, database, table=None):
         cmd = ['mysqldump', '-h', self.profile['host'], '-P', str(self.profile['port']),
                '-u', self.profile['user'], '--set-gtid-purged=OFF', database]
+        if table:
+            cmd.append(table)
         env = os.environ.copy()
         if self.profile.get('password'):
             env['MYSQL_PWD'] = self.profile['password']
@@ -249,3 +251,18 @@ class MySQLAdapter:
             env['MYSQL_PWD'] = self.profile['password']
         with open(path, encoding='utf-8') as source:
             subprocess.run(cmd, stdin=source, check=True, stderr=subprocess.PIPE, env=env)
+
+    def explain_query(self, conn, query):
+        clean_query = query.strip().rstrip(';')
+        cursor = conn.cursor()
+        try:
+            cursor.execute(f"EXPLAIN FORMAT=JSON {clean_query}")
+            row = cursor.fetchone()
+            val = list(row.values())[0] if isinstance(row, dict) else row[0]
+            if isinstance(val, str):
+                import json
+                return json.loads(val)
+            return val
+        except Exception:
+            cursor.execute(f"EXPLAIN {clean_query}")
+            return cursor.fetchall()

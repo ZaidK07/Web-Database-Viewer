@@ -424,6 +424,14 @@
                                     </div>
                                     <span>Export CSV</span>
                                 </a>
+                                <a :href="'/api/sqlite/' + activeFile.id + '/table/' + encodeURIComponent(activeTable) + '/export/sql'" 
+                                   @click="showActionsDropdown = false"
+                                   class="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors text-left">
+                                    <div class="w-6 h-6 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 flex items-center justify-center shrink-0">
+                                        <i class="ph-bold ph-file-sql text-xs"></i>
+                                    </div>
+                                    <span>Export SQL</span>
+                                </a>
                             </div>
                             <div class="p-1 flex flex-col gap-0.5">
                                 <button type="button" @click="showActionsDropdown = false; toggleBatchMode()" 

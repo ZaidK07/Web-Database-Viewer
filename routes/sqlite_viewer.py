@@ -15,6 +15,7 @@ from services.sqlite_storage import (
     delete_uploaded_sqlite_file,
     register_local_sqlite_path
 )
+from services.explain_parser import parse_sqlite_explain
 
 sqlite_bp = Blueprint('sqlite_viewer', __name__)
 
@@ -313,6 +314,23 @@ def export_sqlite_sql(file_id):
         return api_error(error)
 
 
+@sqlite_bp.route('/api/sqlite/<file_id>/table/<tablename>/export/sql')
+def export_table_sql(file_id, tablename):
+    file_info = get_uploaded_sqlite_file(file_id)
+    if not file_info or not file_info['exists']:
+        return api_error('File not found on disk', 404)
+    try:
+        adapter = SQLiteAdapter(file_info['file_path'])
+        stream_gen = adapter.dump_stream(table=tablename)
+        response = Response(stream_with_context(stream_gen), mimetype='application/sql')
+        response.headers['Content-Disposition'] = f'attachment; filename="{tablename}_export.sql"'
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        return response
+    except Exception as error:
+        return api_error(error)
+
+
 @sqlite_bp.route('/api/sqlite/<file_id>/sql', methods=['POST'])
 def execute_sql(file_id):
     file_info = get_uploaded_sqlite_file(file_id)
@@ -343,4 +361,23 @@ def execute_sql(file_id):
             return jsonify(success=True, affected_rows=affected, is_select=False)
     except Exception as error:
         log_history(success=False, error=error)
+        return api_error(error)
+
+
+@sqlite_bp.route('/api/sqlite/<file_id>/sql/explain', methods=['POST'])
+def explain_sql(file_id):
+    file_info = get_uploaded_sqlite_file(file_id)
+    if not file_info or not file_info['exists']:
+        return api_error('File not found on disk', 404)
+    data = request.get_json(silent=True) or {}
+    query = (data.get('query') or '').strip()
+    if not query:
+        return api_error('Query is required', 400)
+    try:
+        adapter = SQLiteAdapter(file_info['file_path'])
+        with adapter.connect() as conn:
+            raw_explain = adapter.explain_query(conn, query)
+            parsed = parse_sqlite_explain(raw_explain)
+            return jsonify(success=True, plan=parsed)
+    except Exception as error:
         return api_error(error)

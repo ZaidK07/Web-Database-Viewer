@@ -257,9 +257,12 @@ class PostgreSQLAdapter:
             env['PGSSLMODE'] = self.profile['sslmode']
         return env
 
-    def dump_stream(self, database):
+    def dump_stream(self, database, table=None):
         cmd = ['pg_dump', '-h', self.profile['host'], '-p', str(self.profile['port']),
-               '-U', self.profile['user'], '--no-owner', '--no-privileges', database]
+               '-U', self.profile['user'], '--no-owner', '--no-privileges']
+        if table:
+            cmd.extend(['-t', table])
+        cmd.append(database)
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
@@ -322,3 +325,18 @@ class PostgreSQLAdapter:
                '-p', str(self.profile['port']), '-U', self.profile['user'], '-d', database]
         with open(path, encoding='utf-8') as source:
             subprocess.run(cmd, stdin=source, check=True, stderr=subprocess.PIPE, env=self._cli_env())
+
+    def explain_query(self, conn, query):
+        clean_query = query.strip().rstrip(';')
+        cursor = conn.cursor()
+        try:
+            cursor.execute(f"EXPLAIN (FORMAT JSON, VERBOSE) {clean_query}")
+            row = cursor.fetchone()
+            val = list(row.values())[0] if isinstance(row, dict) else row[0]
+            if isinstance(val, str):
+                import json
+                return json.loads(val)
+            return val
+        except Exception:
+            cursor.execute(f"EXPLAIN {clean_query}")
+            return cursor.fetchall()

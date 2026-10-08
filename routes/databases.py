@@ -20,6 +20,7 @@ from services.profiles import (
     get_profiles_data
 )
 from services.query_history import record_query
+from services.explain_parser import parse_postgres_explain, parse_mysql_explain
 
 databases_bp = Blueprint('databases', __name__)
 
@@ -325,6 +326,25 @@ def export_table_csv(profile_name, dbname, tablename):
         return api_error(error)
 
 
+@databases_bp.route('/api/p/<profile_name>/db/<dbname>/table/<tablename>/export/sql')
+def export_table_sql(profile_name, dbname, tablename):
+    if dbname not in get_db_list(profile_name):
+        return api_error('Database not found in list', 404)
+    try:
+        adapter = get_adapter(profile_name)
+        stream_gen = adapter.dump_stream(dbname, table=tablename)
+        response = Response(stream_with_context(stream_gen), mimetype='application/sql')
+        response.headers['Content-Disposition'] = f'attachment; filename="{tablename}_export.sql"'
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        return response
+    except FileNotFoundError:
+        cmd_name = 'pg_dump' if get_profile(profile_name).get('engine') == 'postgresql' else 'mysqldump'
+        return api_error(f'CLI tool "{cmd_name}" is not installed or not in PATH on the server', 500)
+    except Exception as error:
+        return api_error(error)
+
+
 @databases_bp.route('/api/p/<profile_name>/db/<dbname>/export')
 def export_db(profile_name, dbname):
     if dbname not in get_db_list(profile_name):
@@ -430,6 +450,29 @@ def execute_sql(profile_name):
             return jsonify(success=True, affected_rows=affected, is_select=False, dbname=dbname)
     except Exception as error:
         log_history(success=False, error=error)
+        return api_error(error)
+
+
+@databases_bp.route('/api/p/<profile_name>/sql/explain', methods=['POST'])
+def explain_sql(profile_name):
+    data = request.get_json(silent=True) or {}
+    dbname = data.get('dbname')
+    query = (data.get('query') or '').strip()
+    if not query:
+        return api_error('Query is required', 400)
+    try:
+        adapter = get_adapter(profile_name)
+        with adapter.connect(dbname) as conn:
+            raw_explain = adapter.explain_query(conn, query)
+            engine = adapter.engine
+            if engine == 'postgresql':
+                parsed = parse_postgres_explain(raw_explain)
+            elif engine == 'mysql':
+                parsed = parse_mysql_explain(raw_explain)
+            else:
+                parsed = {'engine': engine, 'raw': raw_explain}
+            return jsonify(success=True, plan=parsed)
+    except Exception as error:
         return api_error(error)
 
 

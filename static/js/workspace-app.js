@@ -685,6 +685,11 @@
                 window.location.href = `${window.API_BASE}/db/${encodeURIComponent(activeDb.value)}/table/${encodeURIComponent(activeTable.value)}/export/csv`;
             };
 
+            const exportTableSQL = () => {
+                if (!activeDb.value || !activeTable.value) return;
+                window.location.href = `${window.API_BASE}/db/${encodeURIComponent(activeDb.value)}/table/${encodeURIComponent(activeTable.value)}/export/sql`;
+            };
+
             const teleport = (targetTable, targetCol, value) => {
                 activeFilter.value = { column: targetCol, value: value };
                 selectTable(targetTable, true);
@@ -1171,7 +1176,7 @@
                 deleteSelectedRows: () => batchSelection.deleteSelectedRows(baseSetup.customConfirm, baseSetup.showToast),
                 ...columnManager,
                 ...erd,
-                showAddRowModal, addRowData, isSavingRow, openAddRowModal, saveNewRow, deleteRow, exportCSV, teleport,
+                showAddRowModal, addRowData, isSavingRow, openAddRowModal, saveNewRow, deleteRow, exportCSV, exportTableSQL, teleport,
                 copyToClipboard, copiedCell, handleCellClick
             };
         }

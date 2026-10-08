@@ -275,6 +275,10 @@
             const sqlIsSelect = ref(false);
             const sqlAffected = ref(0);
             const sqlResultTime = ref(null);
+            const sqlResultTab = ref('results');
+            const sqlExplainPlan = ref(null);
+            const isExplaining = ref(false);
+            const sqlExplainRawView = ref(false);
 
             const dbList = ref([]);
             const currentTable = ref(null);
@@ -852,6 +856,7 @@
                 }
 
                 sqlLoading.value = true;
+                sqlResultTab.value = 'results';
                 sqlError.value = '';
                 sqlSuccess.value = false;
                 const start = performance.now();
@@ -898,6 +903,52 @@
                     sqlResultTime.value = Math.round(performance.now() - start);
                     fetchRecallHistory();
                     if (sqlTab.value === 'history') fetchHistory();
+                }
+            };
+
+            const explainSql = async () => {
+                const selection = sqlEditor ? sqlEditor.getSelection().trim() : '';
+                const queryToRun = (selection || sqlQuery.value || '').trim();
+                if (!queryToRun) return;
+
+                if (!sqlDb.value && !window.location.pathname.startsWith('/sqlite')) {
+                    if (typeof DBNAME !== 'undefined' && DBNAME) {
+                        sqlDb.value = DBNAME;
+                    } else if (dbList.value && dbList.value.length === 1) {
+                        sqlDb.value = dbList.value[0].name || dbList.value[0].id || '';
+                    }
+                }
+
+                sqlLoading.value = true;
+                isExplaining.value = true;
+                sqlError.value = '';
+                const start = performance.now();
+
+                try {
+                    const isSqlite = window.location.pathname.startsWith('/sqlite');
+                    const url = isSqlite ? `/api/sqlite/${encodeURIComponent(sqlDb.value)}/sql/explain` : (window.API_BASE + '/sql/explain');
+                    const body = isSqlite ? { query: queryToRun } : { dbname: sqlDb.value, query: queryToRun };
+
+                    const res = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body)
+                    });
+                    const data = await res.json();
+                    if (data.error) {
+                        sqlError.value = data.error;
+                        sqlResultTab.value = 'results';
+                    } else {
+                        sqlExplainPlan.value = data.plan;
+                        sqlResultTab.value = 'explain';
+                    }
+                } catch(e) {
+                    sqlError.value = "Network error: " + (e.message || e);
+                    sqlResultTab.value = 'results';
+                } finally {
+                    sqlLoading.value = false;
+                    isExplaining.value = false;
+                    sqlResultTime.value = Math.round(performance.now() - start);
                 }
             };
 
@@ -975,6 +1026,7 @@
             return {
                 isDark, toggleDarkMode, showFeaturesModal, isOnDashboard,
                 showSqlPanel, sqlPosition, setSqlPosition, sqlPanelWidth, sqlPanelHeight, isResizingSql, startSqlResizeRight, startSqlResizeBottom, sqlDb, sqlQuery, sqlLoading, sqlError, sqlSuccess, sqlRows, sqlIsSelect, sqlAffected, sqlResultTime, dbList, currentTable, executeSql,
+                sqlResultTab, sqlExplainPlan, isExplaining, sqlExplainRawView, explainSql,
                 sqlTab, setSqlTab, sqlEditorEl, sqlSchemaInfo, sqlHasSelection,
                 sqlDiagnostics, topDiagnostic, applySqlQuickFix,
                 showSqlDbDropdown, sqlDbSearch, sqlDbSearchInput, sqlDbDropdownBtn, sqlDbDropdownStyles, sqlDbDropdownPlacement, highlightedDbIndex, handleSqlDbKeydown, toggleSqlDbDropdown, filteredSqlDbList, getDbDisplayName, selectSqlDb,

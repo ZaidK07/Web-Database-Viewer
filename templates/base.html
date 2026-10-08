@@ -369,30 +369,120 @@
                                 </div>
                             </div>
 
-                            <!-- Execute Button -->
-                            <button @click="executeSql" :disabled="!sqlQuery || sqlLoading" class="w-full py-2 bg-brand-600 text-white rounded-lg font-medium hover:bg-brand-700 disabled:opacity-50 flex justify-center items-center gap-2 text-sm shadow-sm transition-colors shrink-0">
-                                <i v-if="sqlLoading" class="ph-bold ph-spinner animate-spin"></i>
-                                <span v-else class="flex items-center gap-1.5"><i class="ph-bold ph-play"></i> {% raw %}{{ sqlHasSelection ? 'Execute Selection' : 'Execute Query' }}{% endraw %}</span>
-                            </button>
+                            <!-- Action Buttons -->
+                            <div class="flex items-center gap-2 shrink-0">
+                                <button @click="executeSql" :disabled="!sqlQuery || sqlLoading" class="flex-1 py-2 bg-brand-600 text-white rounded-lg font-medium hover:bg-brand-700 disabled:opacity-50 flex justify-center items-center gap-2 text-sm shadow-sm transition-colors">
+                                    <i v-if="sqlLoading && !isExplaining" class="ph-bold ph-spinner animate-spin"></i>
+                                    <span v-else class="flex items-center gap-1.5"><i class="ph-bold ph-play"></i> {% raw %}{{ sqlHasSelection ? 'Execute Selection' : 'Execute Query' }}{% endraw %}</span>
+                                </button>
+                                <button @click="explainSql" :disabled="!sqlQuery || sqlLoading" title="Analyze query execution plan (EXPLAIN)" class="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-medium disabled:opacity-50 flex items-center gap-1.5 text-sm shadow-sm transition-colors shrink-0">
+                                    <i v-if="sqlLoading && isExplaining" class="ph-bold ph-spinner animate-spin"></i>
+                                    <span v-else class="flex items-center gap-1.5"><i class="ph-bold ph-tree-structure"></i> Explain</span>
+                                </button>
+                            </div>
                         </div>
 
                         <!-- Right / Bottom: Results Area -->
                         <div class="border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800/60 flex flex-col overflow-hidden"
                              :class="sqlPosition === 'bottom' ? 'flex-1 min-w-0 h-full' : 'h-1/2 min-h-[150px] shrink-0'">
-                            <div class="px-3 py-2 border-b border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-900/50 flex items-center justify-between shrink-0">
-                                <div class="flex items-center gap-2">
-                                    <span>Results</span>
-                                    <span v-if="sqlSuccess && sqlIsSelect" class="text-[10px] font-normal px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
-                                        {% raw %}{{ sqlRows.length }}{% endraw %} row{% raw %}{{ sqlRows.length === 1 ? '' : 's' }}{% endraw %}
-                                    </span>
+                            <div class="px-2.5 py-1.5 border-b border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-900/50 flex items-center justify-between shrink-0">
+                                <div class="flex items-center gap-1">
+                                    <button @click="sqlResultTab = 'results'"
+                                            class="px-2.5 py-1 rounded-md text-xs font-semibold transition-colors flex items-center gap-1.5"
+                                            :class="sqlResultTab === 'results' ? 'bg-white dark:bg-slate-800 text-brand-600 dark:text-brand-400 shadow-2xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'">
+                                        <i class="ph-bold ph-table"></i> Results
+                                        <span v-if="sqlSuccess && sqlIsSelect" class="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+                                            {% raw %}{{ sqlRows.length }}{% endraw %}
+                                        </span>
+                                    </button>
+                                    <button v-if="sqlExplainPlan" @click="sqlResultTab = 'explain'"
+                                            class="px-2.5 py-1 rounded-md text-xs font-semibold transition-colors flex items-center gap-1.5"
+                                            :class="sqlResultTab === 'explain' ? 'bg-white dark:bg-slate-800 text-amber-600 dark:text-amber-400 shadow-2xs' : 'text-slate-600 dark:text-slate-400 hover:text-amber-600 dark:hover:text-amber-400'">
+                                        <i class="ph-bold ph-tree-structure"></i> Execution Plan
+                                        <span v-if="sqlExplainPlan.summary?.hasFullScan" class="w-2 h-2 rounded-full bg-red-500 animate-pulse" title="Full table scan detected"></span>
+                                    </button>
                                 </div>
-                                <span v-if="sqlResultTime" class="text-slate-400 dark:text-slate-500 font-normal">{% raw %}{{ sqlResultTime }}{% endraw %}ms</span>
+                                <div class="flex items-center gap-2">
+                                    <button v-if="sqlResultTab === 'explain' && sqlExplainPlan" @click="sqlExplainRawView = !sqlExplainRawView" class="text-[11px] font-normal text-slate-500 hover:text-brand-600 dark:hover:text-brand-400 transition-colors flex items-center gap-1">
+                                        <i class="ph-bold" :class="sqlExplainRawView ? 'ph-tree-structure' : 'ph-code'"></i>
+                                        <span>{% raw %}{{ sqlExplainRawView ? 'Visual Plan' : 'Raw Plan' }}{% endraw %}</span>
+                                    </button>
+                                    <span v-if="sqlResultTime" class="text-slate-400 dark:text-slate-500 font-normal">{% raw %}{{ sqlResultTime }}{% endraw %}ms</span>
+                                </div>
                             </div>
                             <div class="flex-1 overflow-auto p-2 text-xs font-mono whitespace-pre">
                                 <div v-if="sqlError" class="p-3 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 rounded-lg border border-red-200 dark:border-red-900/60 whitespace-pre-wrap font-sans text-xs">
                                     <div class="font-bold flex items-center gap-1.5 mb-1"><i class="ph-bold ph-warning-circle text-base"></i> Query Error</div>
                                     {% raw %}{{ sqlError }}{% endraw %}
                                 </div>
+
+                                <!-- Visual Execution Plan View -->
+                                <div v-else-if="sqlResultTab === 'explain' && sqlExplainPlan" class="p-2 flex flex-col gap-2.5 font-sans whitespace-normal">
+                                    <!-- Alert Banner -->
+                                    <div v-if="sqlExplainPlan.summary?.hasFullScan" class="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 flex items-start gap-2">
+                                        <i class="ph-bold ph-warning text-amber-600 dark:text-amber-400 text-base shrink-0 mt-0.5"></i>
+                                        <div class="text-xs">
+                                            <span class="font-bold text-amber-800 dark:text-amber-300 block">Full Table Scan Detected</span>
+                                            <span class="text-amber-700 dark:text-amber-400 text-[11px]">{% raw %}{{ sqlExplainPlan.summary.warning || 'Query scans tables without an index.' }}{% endraw %}</span>
+                                        </div>
+                                    </div>
+                                    <div v-else class="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 flex items-center gap-2">
+                                        <i class="ph-bold ph-check-circle text-emerald-600 dark:text-emerald-400 text-base shrink-0"></i>
+                                        <span class="text-xs text-emerald-700 dark:text-emerald-300 font-medium">Index utilization verified. No full table scans detected.</span>
+                                    </div>
+
+                                    <!-- Quick Stats -->
+                                    <div class="grid grid-cols-3 gap-2 text-center text-xs">
+                                        <div class="p-2 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800">
+                                            <span class="text-[10px] text-slate-400 uppercase font-bold block">Engine</span>
+                                            <span class="font-mono font-bold text-slate-700 dark:text-slate-200 uppercase">{% raw %}{{ sqlExplainPlan.engine }}{% endraw %}</span>
+                                        </div>
+                                        <div class="p-2 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800">
+                                            <span class="text-[10px] text-slate-400 uppercase font-bold block">Est. Cost</span>
+                                            <span class="font-mono font-bold text-slate-700 dark:text-slate-200">{% raw %}{{ sqlExplainPlan.summary?.totalCost ?? 'N/A' }}{% endraw %}</span>
+                                        </div>
+                                        <div class="p-2 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800">
+                                            <span class="text-[10px] text-slate-400 uppercase font-bold block">Steps</span>
+                                            <span class="font-mono font-bold text-slate-700 dark:text-slate-200">{% raw %}{{ sqlExplainPlan.nodes?.length ?? 0 }}{% endraw %}</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Raw View Toggle Body -->
+                                    <pre v-if="sqlExplainRawView" class="p-3 rounded-xl bg-slate-900 text-slate-100 text-xs font-mono overflow-auto max-h-[300px]">{% raw %}{{ JSON.stringify(sqlExplainPlan.raw, null, 2) }}{% endraw %}</pre>
+
+                                    <!-- Visual Nodes Tree / Cards -->
+                                    <div v-else class="flex flex-col gap-2">
+                                        <div v-for="(node, idx) in sqlExplainPlan.nodes" :key="idx"
+                                             class="p-2.5 rounded-xl border bg-white dark:bg-slate-900 transition-all flex flex-col gap-1.5 shadow-2xs"
+                                             :class="node.isFullScan ? 'border-amber-300 dark:border-amber-800/80 bg-amber-50/20 dark:bg-amber-950/20' : 'border-slate-200 dark:border-slate-800'">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <div class="flex items-center gap-2">
+                                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider"
+                                                          :class="node.isFullScan ? 'bg-red-100 text-red-700 dark:bg-red-950/80 dark:text-red-400' : (node.type === 'INDEX' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-400' : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300')">
+                                                        {% raw %}{{ node.operation }}{% endraw %}
+                                                    </span>
+                                                    <span v-if="node.table" class="font-mono font-bold text-xs text-slate-800 dark:text-slate-100">
+                                                        {% raw %}{{ node.table }}{% endraw %}
+                                                    </span>
+                                                </div>
+                                                <span v-if="node.cost" class="text-[11px] font-mono text-slate-400">cost: {% raw %}{{ node.cost }}{% endraw %}</span>
+                                            </div>
+
+                                            <div v-if="node.index" class="text-xs text-emerald-600 dark:text-emerald-400 font-mono flex items-center gap-1">
+                                                <i class="ph-bold ph-key text-xs"></i>
+                                                <span>Using Index: {% raw %}{{ node.index }}{% endraw %}</span>
+                                            </div>
+                                            <div v-if="node.filter" class="text-[11px] text-slate-500 dark:text-slate-400 font-mono bg-slate-50 dark:bg-slate-800/50 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800 break-all">
+                                                Filter: {% raw %}{{ node.filter }}{% endraw %}
+                                            </div>
+                                            <div v-if="node.detail && !node.filter" class="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
+                                                {% raw %}{{ node.detail }}{% endraw %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Results Table / Success View -->
                                 <div v-else-if="sqlSuccess">
                                     <div v-if="sqlIsSelect">
                                         <table v-if="sqlRows.length > 0" class="min-w-full divide-y divide-slate-200 dark:divide-slate-700 text-left">
@@ -420,7 +510,7 @@
                                     </div>
                                 </div>
                                 <div v-else class="text-slate-400 dark:text-slate-500 italic p-6 text-center font-sans">
-                                    Run a query to see results here.
+                                    Run a query to see results here, or click Explain to inspect its execution plan.
                                 </div>
                             </div>
                         </div>
